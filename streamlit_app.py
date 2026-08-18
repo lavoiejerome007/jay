@@ -100,21 +100,18 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 def file_to_base64(uploaded_file):
-    """Redimensionne et compresse l'image pour éviter de saturer Google Sheets."""
+    """Compresse fortement l'image pour éviter toute erreur de taille API."""
     if uploaded_file is not None:
         try:
             image = Image.open(uploaded_file)
-            # Redimensionnement maximal pour alléger le poids de l'image
-            image.thumbnail((400, 400))
+            image.thumbnail((150, 150))
             
             buffered = io.BytesIO()
-            image.save(buffered, format="JPEG", quality=75)
+            image.save(buffered, format="JPEG", quality=50)
             encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded}"
         except Exception:
-            bytes_data = uploaded_file.getvalue()
-            encoded = base64.b64encode(bytes_data).decode("utf-8")
-            return f"data:image/jpeg;base64,{encoded}"
+            return ""
     return ""
 
 def load_fit_note_data():
@@ -310,7 +307,7 @@ else:
             
             if st.button("Sauvegarder la combinaison"):
                 if shirt_file and pants_file:
-                    with st.spinner("Traitement et compression des images..."):
+                    with st.spinner("Compression et enregistrement en cours..."):
                         shirt_b64 = file_to_base64(shirt_file)
                         pants_b64 = file_to_base64(pants_file)
                     
@@ -339,9 +336,9 @@ else:
                             
                             # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=250)
+                                st.image(row['shirt_url'], caption="Chandail", width=200)
                             if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=250)
+                                st.image(row['pants_url'], caption="Pantalon", width=200)
                                 
                             st.markdown(f"⭐ Note reçue : **{row['rating']}/100**")
                             st.markdown(f"💬 Commentaire : *{row['notes'] if row['notes'] else 'Aucun commentaire'}*")
@@ -361,9 +358,9 @@ else:
                         with st.expander(f"Combinaison de {row['owner']} (ID: {row['id']})"):
                             # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=250)
+                                st.image(row['shirt_url'], caption="Chandail", width=200)
                             if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=250)
+                                st.image(row['pants_url'], caption="Pantalon", width=200)
                             
                             try:
                                 current_rating = int(row['rating'])
