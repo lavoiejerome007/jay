@@ -19,18 +19,43 @@ st.set_page_config(page_title="Mon Application Web", page_icon="🚀", layout="w
 # FONCTIONS BASES DE DONNÉES / GOOGLE SHEETS
 # ==========================================
 
+def clean_private_key(key_str):
+    """Reconstruit une clé PEM parfaite peu importe le formatage TOML."""
+    if not isinstance(key_str, str):
+        return key_str
+    
+    # Remplacer les \n littéraux
+    key_str = key_str.replace("\\n", "\n")
+    
+    header = "-----BEGIN PRIVATE KEY-----"
+    footer = "-----END PRIVATE KEY-----"
+    
+    if header in key_str and footer in key_str:
+        # Extraire uniquement le corps Base64
+        parts = key_str.split(header)
+        body_and_footer = parts[1].split(footer)
+        raw_body = body_and_footer[0]
+        
+        # Supprimer tous les espaces, retours à la ligne et caractères parasites
+        clean_body = "".join(raw_body.split())
+        
+        # Reconstruire une clé PEM standard
+        return f"{header}\n{clean_body}\n{footer}\n"
+    
+    return key_str
+
 def get_gsheet_client():
     """Connexion à Google Sheets via les secrets Streamlit."""
     if not GSPREAD_AVAILABLE:
         return None
     try:
         if "gcp_service_account" in st.secrets:
-            # Copie du dictionnaire des secrets pour modifications
+            # Copie du dictionnaire des secrets
             creds_dict = dict(st.secrets["gcp_service_account"])
             
-            # Nettoyage automatique du formatage de la clé privée
+            # Nettoyage automatique et réparation de la clé
             if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                creds_dict["private_key"] = clean_private_key(creds_dict["private_key"])
 
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
@@ -188,7 +213,6 @@ else:
         st.title("⚙️ Système 1")
         st.write("Espace de travail pour le premier module.")
         
-        # Exemple de sauvegarde de donnée personnelle dans Google Sheets
         st.subheader("Enregistrer une information")
         info_perso = st.text_input("Entrez une donnée à sauvegarder :")
         if st.button("Sauvegarder l'information"):
