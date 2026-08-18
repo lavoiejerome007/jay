@@ -2,6 +2,7 @@ import streamlit as st
 import hashlib
 import json
 import os
+import base64
 import pandas as pd
 from datetime import datetime
 
@@ -96,8 +97,17 @@ def save_user(username, password_hash):
         
     return saved_to_gsheet
 
+def file_to_base64(uploaded_file):
+    """Convertit une image uploadée en chaîne Base64 pour l'enregistrer dans Google Sheets."""
+    if uploaded_file is not None:
+        bytes_data = uploaded_file.getvalue()
+        encoded = base64.b64encode(bytes_data).decode("utf-8")
+        mime = uploaded_file.type if uploaded_file.type else "image/jpeg"
+        return f"data:{mime};base64,{encoded}"
+    return ""
+
 def load_fit_note_data():
-    """Charge l'onglet FitNote de manière ultra-sécurisée sans KeyError."""
+    """Charge l'onglet FitNote de manière sécurisée."""
     client = get_gsheet_client()
     default_cols = ['id', 'owner', 'recipient', 'shirt_url', 'pants_url', 'rating', 'notes']
     if not client:
@@ -112,7 +122,6 @@ def load_fit_note_data():
         data_rows = rows[1:]
         df = pd.DataFrame(data_rows, columns=headers)
         
-        # S'assurer que toutes les colonnes requises existent
         for col in default_cols:
             if col not in df.columns:
                 df[col] = ""
@@ -282,27 +291,33 @@ else:
         # --- TAB AJOUTER ---
         with tab_add:
             st.subheader("Ajouter une combinaison")
-            col_a, col_b = st.columns(2)
-            shirt_img = col_a.text_input("URL Image Chandail")
-            pants_img = col_b.text_input("URL Image Pantalon")
+            
+            # Utilisation de file_uploader pour glisser/déposer les images depuis l'appareil
+            shirt_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Chandail", type=["png", "jpg", "jpeg"], key="shirt_up")
+            pants_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Pantalon", type=["png", "jpg", "jpeg"], key="pants_up")
             
             all_users = list(load_users().keys())
             recipient = st.selectbox("Partager avec :", all_users)
             
             if st.button("Sauvegarder la combinaison"):
-                if sheet:
-                    new_id = len(data) + 1
-                    sheet.append_row([str(new_id), st.session_state['username'], recipient, shirt_img, pants_img, "0", ""])
-                    st.success("Combinaison enregistrée et partagée avec succès !")
-                    st.rerun()
+                if shirt_file and pants_file:
+                    shirt_b64 = file_to_base64(shirt_file)
+                    pants_b64 = file_to_base64(pants_file)
+                    
+                    if sheet:
+                        new_id = len(data) + 1
+                        sheet.append_row([str(new_id), st.session_state['username'], recipient, shirt_b64, pants_b64, "0", ""])
+                        st.success("Combinaison enregistrée et partagée avec succès !")
+                        st.rerun()
+                    else:
+                        st.error("Google Sheets non connecté.")
                 else:
-                    st.error("Google Sheets non connecté.")
+                    st.warning("Veuillez importer les deux images (chandail et pantalon) avant de sauvegarder.")
 
         # --- TAB VISUALISER ---
         with tab_view:
             st.subheader("Toutes les combinaisons (Mes créations & partagées avec moi)")
             if not data.empty:
-                # Filtrer les lignes où je suis owner ou recipient
                 filtered_data = data[(data['owner'] == st.session_state['username']) | (data['recipient'] == st.session_state['username'])]
                 
                 if filtered_data.empty:
@@ -310,18 +325,14 @@ else:
                 else:
                     for index, row in filtered_data.iterrows():
                         with st.container(border=True):
-                            c1, c2 = st.columns(2)
+                            st.write(f"**Combinaison ID: {row['id']}** (Créateur : `{row['owner']}` | Partagé avec : `{row['recipient']}`)")
+                            
+                            # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                c1.image(row['shirt_url'], caption="Chandail", use_container_width=True)
-                            else:
-                                c1.write("Pas d'image chandail")
-                                
+                                st.image(row['shirt_url'], caption="Chandail", width=300)
                             if row['pants_url']:
-                                c2.image(row['pants_url'], caption="Pantalon", use_container_width=True)
-                            else:
-                                c2.write("Pas d'image pantalon")
+                                st.image(row['pants_url'], caption="Pantalon", width=300)
                                 
-                            st.write(f"Créateur : `{row['owner']}` | Partagé avec : `{row['recipient']}`")
                             st.markdown(f"⭐ Note reçue : **{row['rating']}/100**")
                             st.markdown(f"💬 Commentaire : *{row['notes'] if row['notes'] else 'Aucun commentaire'}*")
             else:
@@ -338,13 +349,12 @@ else:
                 else:
                     for index, row in to_rate.iterrows():
                         with st.expander(f"Combinaison de {row['owner']} (ID: {row['id']})"):
-                            c1, c2 = st.columns(2)
+                            # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                c1.image(row['shirt_url'])
+                                st.image(row['shirt_url'], caption="Chandail", width=300)
                             if row['pants_url']:
-                                c2.image(row['pants_url'])
+                                st.image(row['pants_url'], caption="Pantalon", width=300)
                             
-                            # Conversion sécurisée de la note actuelle
                             try:
                                 current_rating = int(row['rating'])
                             except ValueError:
@@ -355,10 +365,9 @@ else:
                             
                             if st.button("Enregistrer la note", key=f"save_{row['id']}_{index}"):
                                 if sheet:
-                                    # index + 2 car index 0 correspond à la ligne 2 dans Google Sheets (la ligne 1 étant l'en-tête)
                                     row_to_update = index + 2
-                                    sheet.update_cell(row_to_update, 6, str(new_rating)) # Colonne F (rating)
-                                    sheet.update_cell(row_to_update, 7, str(new_note))   # Colonne G (notes)
+                                    sheet.update_cell(row_to_update, 6, str(new_rating))
+                                    sheet.update_cell(row_to_update, 7, str(new_note))
                                     st.success("Note et commentaire mis à jour avec succès !")
                                     st.rerun()
             else:
