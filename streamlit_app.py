@@ -3,8 +3,10 @@ import hashlib
 import json
 import os
 import base64
+import io
 import pandas as pd
 from datetime import datetime
+from PIL import Image
 
 # Vérification de l'installation de gspread
 try:
@@ -98,12 +100,21 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 def file_to_base64(uploaded_file):
-    """Convertit une image uploadée en chaîne Base64 pour l'enregistrer dans Google Sheets."""
+    """Redimensionne et compresse l'image pour éviter de saturer Google Sheets."""
     if uploaded_file is not None:
-        bytes_data = uploaded_file.getvalue()
-        encoded = base64.b64encode(bytes_data).decode("utf-8")
-        mime = uploaded_file.type if uploaded_file.type else "image/jpeg"
-        return f"data:{mime};base64,{encoded}"
+        try:
+            image = Image.open(uploaded_file)
+            # Redimensionnement maximal pour alléger le poids de l'image
+            image.thumbnail((400, 400))
+            
+            buffered = io.BytesIO()
+            image.save(buffered, format="JPEG", quality=75)
+            encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            return f"data:image/jpeg;base64,{encoded}"
+        except Exception:
+            bytes_data = uploaded_file.getvalue()
+            encoded = base64.b64encode(bytes_data).decode("utf-8")
+            return f"data:image/jpeg;base64,{encoded}"
     return ""
 
 def load_fit_note_data():
@@ -190,7 +201,6 @@ if not st.session_state["logged_in"]:
 # ==========================================
 
 else:
-    # Sidebar personnalisée
     with st.sidebar:
         with st.container(border=True):
             st.markdown(f"**Bienvenue**<br>`{st.session_state['username']}`", unsafe_allow_html=True)
@@ -292,7 +302,6 @@ else:
         with tab_add:
             st.subheader("Ajouter une combinaison")
             
-            # Utilisation de file_uploader pour glisser/déposer les images depuis l'appareil
             shirt_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Chandail", type=["png", "jpg", "jpeg"], key="shirt_up")
             pants_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Pantalon", type=["png", "jpg", "jpeg"], key="pants_up")
             
@@ -301,8 +310,9 @@ else:
             
             if st.button("Sauvegarder la combinaison"):
                 if shirt_file and pants_file:
-                    shirt_b64 = file_to_base64(shirt_file)
-                    pants_b64 = file_to_base64(pants_file)
+                    with st.spinner("Traitement et compression des images..."):
+                        shirt_b64 = file_to_base64(shirt_file)
+                        pants_b64 = file_to_base64(pants_file)
                     
                     if sheet:
                         new_id = len(data) + 1
@@ -329,9 +339,9 @@ else:
                             
                             # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=300)
+                                st.image(row['shirt_url'], caption="Chandail", width=250)
                             if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=300)
+                                st.image(row['pants_url'], caption="Pantalon", width=250)
                                 
                             st.markdown(f"⭐ Note reçue : **{row['rating']}/100**")
                             st.markdown(f"💬 Commentaire : *{row['notes'] if row['notes'] else 'Aucun commentaire'}*")
@@ -351,9 +361,9 @@ else:
                         with st.expander(f"Combinaison de {row['owner']} (ID: {row['id']})"):
                             # Affichage vertical : Chandail au-dessus du pantalon
                             if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=300)
+                                st.image(row['shirt_url'], caption="Chandail", width=250)
                             if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=300)
+                                st.image(row['pants_url'], caption="Pantalon", width=250)
                             
                             try:
                                 current_rating = int(row['rating'])
