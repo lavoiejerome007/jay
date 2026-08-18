@@ -100,36 +100,63 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 def file_to_base64(uploaded_file):
-    """Compresse fortement l'image pour éviter toute erreur de taille API."""
+    """Compresse l'image pour l'enregistrer proprement dans Google Sheets."""
     if uploaded_file is not None:
         try:
             image = Image.open(uploaded_file)
-            image.thumbnail((150, 150))
+            image.thumbnail((300, 300))
             
             buffered = io.BytesIO()
-            image.save(buffered, format="JPEG", quality=50)
+            image.save(buffered, format="JPEG", quality=60)
             encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded}"
         except Exception:
             return ""
     return ""
 
-def load_fit_note_data():
-    """Charge l'onglet FitNote de manière sécurisée."""
+def get_or_create_worksheet(client, sheet_name, default_cols):
+    """Récupère ou crée automatiquement un onglet Google Sheets avec ses en-têtes."""
+    try:
+        sheet = client.open("Streamlit_DB").worksheet(sheet_name)
+    except Exception:
+        spreadsheet = client.open("Streamlit_DB")
+        sheet = spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+        sheet.append_row(default_cols)
+    return sheet
+
+def load_fit_items():
+    """Charge les pièces de linge (chandails et pantalons)."""
     client = get_gsheet_client()
-    default_cols = ['id', 'owner', 'recipient', 'shirt_url', 'pants_url', 'rating', 'notes']
+    default_cols = ['id', 'owner', 'recipient', 'type', 'image_url']
     if not client:
         return pd.DataFrame(columns=default_cols)
     try:
-        sheet = client.open("Streamlit_DB").worksheet("FitNote")
+        sheet = get_or_create_worksheet(client, "FitItems", default_cols)
         rows = sheet.get_all_values()
         if not rows or len(rows) <= 1:
             return pd.DataFrame(columns=default_cols)
-        
         headers = rows[0]
-        data_rows = rows[1:]
-        df = pd.DataFrame(data_rows, columns=headers)
-        
+        df = pd.DataFrame(rows[1:], columns=headers)
+        for col in default_cols:
+            if col not in df.columns:
+                df[col] = ""
+        return df
+    except Exception:
+        return pd.DataFrame(columns=default_cols)
+
+def load_fit_ratings():
+    """Charge les notes et commentaires des combinaisons."""
+    client = get_gsheet_client()
+    default_cols = ['combo_id', 'rating', 'notes']
+    if not client:
+        return pd.DataFrame(columns=default_cols)
+    try:
+        sheet = get_or_create_worksheet(client, "FitRatings", default_cols)
+        rows = sheet.get_all_values()
+        if not rows or len(rows) <= 1:
+            return pd.DataFrame(columns=default_cols)
+        headers = rows[0]
+        df = pd.DataFrame(rows[1:], columns=headers)
         for col in default_cols:
             if col not in df.columns:
                 df[col] = ""
@@ -288,97 +315,118 @@ else:
         tab_view, tab_rate, tab_add = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter"])
         
         client = get_gsheet_client()
-        if client:
-            sheet = client.open("Streamlit_DB").worksheet("FitNote")
-        else:
-            sheet = None
-
-        data = load_fit_note_data()
+        items_df = load_fit_items()
+        ratings_df = load_fit_ratings()
 
         # --- TAB AJOUTER ---
         with tab_add:
-            st.subheader("Ajouter une combinaison")
+            st.subheader("Ajouter une pièce de linge")
             
-            shirt_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Chandail", type=["png", "jpg", "jpeg"], key="shirt_up")
-            pants_file = st.file_uploader("📸 Glisser ou sélectionner l'image du Pantalon", type=["png", "jpg", "jpeg"], key="pants_up")
+            item_type = st.selectbox("Type de vêtement", ["Chandail (Haut)", "Pantalon (Bas)"])
+            item_file = st.file_uploader("📸 Glisser ou sélectionner l'image", type=["png", "jpg", "jpeg"], key="item_up")
             
             all_users = list(load_users().keys())
             recipient = st.selectbox("Partager avec :", all_users)
             
-            if st.button("Sauvegarder la combinaison"):
-                if shirt_file and pants_file:
+            if st.button("Sauvegarder l'item"):
+                if item_file:
                     with st.spinner("Compression et enregistrement en cours..."):
-                        shirt_b64 = file_to_base64(shirt_file)
-                        pants_b64 = file_to_base64(pants_file)
+                        img_b64 = file_to_base64(item_file)
+                        type_val = "shirt" if "Chandail" in item_type else "pants"
                     
-                    if sheet:
-                        new_id = len(data) + 1
-                        sheet.append_row([str(new_id), st.session_state['username'], recipient, shirt_b64, pants_b64, "0", ""])
-                        st.success("Combinaison enregistrée et partagée avec succès !")
+                    if client:
+                        sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url'])
+                        new_id = len(items_df) + 1
+                        sheet_items.append_row([str(new_id), st.session_state['username'], recipient, type_val, img_b64])
+                        st.success("Pièce de linge enregistrée et partagée avec succès !")
                         st.rerun()
                     else:
                         st.error("Google Sheets non connecté.")
                 else:
-                    st.warning("Veuillez importer les deux images (chandail et pantalon) avant de sauvegarder.")
+                    st.warning("Veuillez importer une image avant de sauvegarder.")
+
+        # Filtrer les items accessibles par l'utilisateur connecté (ses propres items ou ceux partagés avec lui)
+        if not items_df.empty:
+            accessible_items = items_df[(items_df['owner'] == st.session_state['username']) | (items_df['recipient'] == st.session_state['username'])]
+            shirts = accessible_items[accessible_items['type'] == 'shirt'].to_dict('records')
+            pants = accessible_items[accessible_items['type'] == 'pants'].to_dict('records')
+        else:
+            shirts = []
+            pants = []
+
+        # Convertir les notes en dictionnaire pour un accès rapide
+        ratings_dict = {}
+        if not ratings_df.empty:
+            for _, r in ratings_df.iterrows():
+                ratings_dict[str(r['combo_id'])] = {"rating": r['rating'], "notes": r['notes']}
 
         # --- TAB VISUALISER ---
         with tab_view:
-            st.subheader("Toutes les combinaisons (Mes créations & partagées avec moi)")
-            if not data.empty:
-                filtered_data = data[(data['owner'] == st.session_state['username']) | (data['recipient'] == st.session_state['username'])]
-                
-                if filtered_data.empty:
-                    st.info("Aucune combinaison pour l'instant.")
-                else:
-                    for index, row in filtered_data.iterrows():
-                        with st.container(border=True):
-                            st.write(f"**Combinaison ID: {row['id']}** (Créateur : `{row['owner']}` | Partagé avec : `{row['recipient']}`)")
-                            
-                            # Affichage vertical : Chandail au-dessus du pantalon
-                            if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=200)
-                            if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=200)
-                                
-                            st.markdown(f"⭐ Note reçue : **{row['rating']}/100**")
-                            st.markdown(f"💬 Commentaire : *{row['notes'] if row['notes'] else 'Aucun commentaire'}*")
+            st.subheader("Toutes les combinaisons possibles (Chandails + Pantalons)")
+            if not shirts or not pants:
+                st.info("Ajoutez au moins un chandail et un pantalon (ou attendez des partages) pour voir les combinaisons.")
             else:
-                st.info("Aucune donnée enregistrée dans le système pour le moment.")
+                for s in shirts:
+                    for p in pants:
+                        combo_id = f"S{s['id']}_P{p['id']}"
+                        combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
+                        
+                        with st.container(border=True):
+                            # Affichage vertical sans légende : Chandail au-dessus du pantalon, largeur 500
+                            if s['image_url']:
+                                st.image(s['image_url'], width=500)
+                            if p['image_url']:
+                                st.image(p['image_url'], width=500)
+                                
+                            st.write(f"Créateur Chandail : `{s['owner']}` | Créateur Pantalon : `{p['owner']}`")
+                            st.markdown(f"⭐ Note reçue : **{combo_data['rating']}/100**")
+                            st.markdown(f"💬 Commentaire : *{combo_data['notes'] if combo_data['notes'] else 'Aucun commentaire'}*")
 
         # --- TAB NOTER ---
         with tab_rate:
-            st.subheader("Combinaisons partagées avec vous à noter")
-            if not data.empty:
-                to_rate = data[data['recipient'] == st.session_state['username']]
-                
-                if to_rate.empty:
-                    st.info("Aucune combinaison partagée avec vous pour le moment.")
-                else:
-                    for index, row in to_rate.iterrows():
-                        with st.expander(f"Combinaison de {row['owner']} (ID: {row['id']})"):
-                            # Affichage vertical : Chandail au-dessus du pantalon
-                            if row['shirt_url']:
-                                st.image(row['shirt_url'], caption="Chandail", width=200)
-                            if row['pants_url']:
-                                st.image(row['pants_url'], caption="Pantalon", width=200)
+            st.subheader("Noter les combinaisons de linge")
+            if not shirts or not pants:
+                st.info("Aucune combinaison disponible à noter pour le moment.")
+            else:
+                for s in shirts:
+                    for p in pants:
+                        combo_id = f"S{s['id']}_P{p['id']}"
+                        combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
+                        
+                        with st.expander(f"Combinaison (Chandail #{s['id']} + Pantalon #{p['id']})"):
+                            # Affichage vertical sans légende : Chandail au-dessus du pantalon, largeur 500
+                            if s['image_url']:
+                                st.image(s['image_url'], width=500)
+                            if p['image_url']:
+                                st.image(p['image_url'], width=500)
                             
                             try:
-                                current_rating = int(row['rating'])
+                                current_rating = int(combo_data['rating'])
                             except ValueError:
                                 current_rating = 0
                                 
-                            new_rating = st.number_input("Note /100", min_value=0, max_value=100, value=current_rating, key=f"rate_{row['id']}")
-                            new_note = st.text_input("Commentaire", value=str(row['notes']), key=f"note_{row['id']}")
+                            new_rating = st.number_input("Note /100", min_value=0, max_value=100, value=current_rating, key=f"rate_{combo_id}")
+                            new_note = st.text_input("Commentaire", value=str(combo_data['notes']), key=f"note_{combo_id}")
                             
-                            if st.button("Enregistrer la note", key=f"save_{row['id']}_{index}"):
-                                if sheet:
-                                    row_to_update = index + 2
-                                    sheet.update_cell(row_to_update, 6, str(new_rating))
-                                    sheet.update_cell(row_to_update, 7, str(new_note))
+                            if st.button("Enregistrer la note", key=f"save_{combo_id}"):
+                                if client:
+                                    sheet_ratings = get_or_create_worksheet(client, "FitRatings", ['combo_id', 'rating', 'notes'])
+                                    rows = sheet_ratings.get_all_values()
+                                    
+                                    found_row = None
+                                    for idx, r in enumerate(rows[1:], start=2):
+                                        if r and r[0] == combo_id:
+                                            found_row = idx
+                                            break
+                                    
+                                    if found_row:
+                                        sheet_ratings.update_cell(found_row, 2, str(new_rating))
+                                        sheet_ratings.update_cell(found_row, 3, str(new_note))
+                                    else:
+                                        sheet_ratings.append_row([combo_id, str(new_rating), str(new_note)])
+                                        
                                     st.success("Note et commentaire mis à jour avec succès !")
                                     st.rerun()
-            else:
-                st.info("Rien à noter pour l'instant.")
 
     # --- PAGES DES AUTRES SOUS-SYSTÈMES (2 à 9) ---
     elif page.startswith("Système"):
