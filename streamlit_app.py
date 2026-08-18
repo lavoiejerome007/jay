@@ -96,6 +96,30 @@ def save_user(username, password_hash):
         
     return saved_to_gsheet
 
+def load_fit_note_data():
+    """Charge l'onglet FitNote de manière ultra-sécurisée sans KeyError."""
+    client = get_gsheet_client()
+    default_cols = ['id', 'owner', 'recipient', 'shirt_url', 'pants_url', 'rating', 'notes']
+    if not client:
+        return pd.DataFrame(columns=default_cols)
+    try:
+        sheet = client.open("Streamlit_DB").worksheet("FitNote")
+        rows = sheet.get_all_values()
+        if not rows or len(rows) <= 1:
+            return pd.DataFrame(columns=default_cols)
+        
+        headers = rows[0]
+        data_rows = rows[1:]
+        df = pd.DataFrame(data_rows, columns=headers)
+        
+        # S'assurer que toutes les colonnes requises existent
+        for col in default_cols:
+            if col not in df.columns:
+                df[col] = ""
+        return df
+    except Exception:
+        return pd.DataFrame(columns=default_cols)
+
 # ==========================================
 # GESTION DE LA SESSION & NAVIGATION
 # ==========================================
@@ -157,9 +181,8 @@ if not st.session_state["logged_in"]:
 # ==========================================
 
 else:
-    # Sidebar personnalisée basée sur ton croquis
+    # Sidebar personnalisée
     with st.sidebar:
-        # 1. Boîte de profil en haut
         with st.container(border=True):
             st.markdown(f"**Bienvenue**<br>`{st.session_state['username']}`", unsafe_allow_html=True)
             if st.button("👤 Mon Profil", use_container_width=True):
@@ -168,7 +191,6 @@ else:
 
         st.divider()
 
-        # 2. Utilitaires ajoutés entre le profil et la déconnexion
         st.subheader("🛠️ Utilitaires")
         if st.button("🏠 Tableau de bord", use_container_width=True):
             st.session_state["current_page"] = "Accueil"
@@ -180,14 +202,12 @@ else:
 
         st.divider()
 
-        # 3. Bouton déconnecté tout en bas
         if st.button("🚪 Se déconnecter", type="secondary", use_container_width=True):
             st.session_state["logged_in"] = False
             st.session_state["username"] = ""
             st.session_state["current_page"] = "Accueil"
             st.rerun()
 
-    # Gestion de l'affichage de la page centrale
     page = st.session_state["current_page"]
 
     # --- PAGE ACCUEIL : GRILLE 3x3 DES SYSTÈMES ---
@@ -202,14 +222,14 @@ else:
             "Système 7", "Système 8", "Système 9"
         ]
 
-        # Grille 3x3
         for i in range(0, 9, 3):
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 with st.container(border=True):
                     st.subheader(systems[i])
-                    st.write("Accéder au module.")
+                    title_name = "Fit-Note" if i == 0 else "Accéder au module."
+                    st.write(title_name)
                     if st.button(f"Ouvrir {systems[i]}", key=f"btn_{i}", use_container_width=True):
                         st.session_state["current_page"] = systems[i]
                         st.rerun()
@@ -241,9 +261,8 @@ else:
         st.write(f"Nom d'utilisateur connecté : **{st.session_state['username']}**")
         st.info("Espace dédié à la configuration de ton profil utilisateur.")
 
-    # --- PAGES DES SOUS-SYSTÈMES (1 à 9) ---
-    # --- PAGE FIT-NOTE (SYSTÈME 1) ---
-    elif page == "Système 1": # Renomme dans ton menu si besoin
+    # --- PAGE SYSTÈME 1 : FIT-NOTE ---
+    elif page == "Système 1":
         if st.button("← Retour au tableau de bord"):
             st.session_state["current_page"] = "Accueil"
             st.rerun()
@@ -253,8 +272,12 @@ else:
         tab_view, tab_rate, tab_add = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter"])
         
         client = get_gsheet_client()
-        sheet = client.open("Streamlit_DB").worksheet("FitNote")
-        data = pd.DataFrame(sheet.get_all_records())
+        if client:
+            sheet = client.open("Streamlit_DB").worksheet("FitNote")
+        else:
+            sheet = None
+
+        data = load_fit_note_data()
 
         # --- TAB AJOUTER ---
         with tab_add:
@@ -263,49 +286,90 @@ else:
             shirt_img = col_a.text_input("URL Image Chandail")
             pants_img = col_b.text_input("URL Image Pantalon")
             
-            # Récupérer la liste des utilisateurs pour le partage
             all_users = list(load_users().keys())
             recipient = st.selectbox("Partager avec :", all_users)
             
             if st.button("Sauvegarder la combinaison"):
-                new_id = len(data) + 1
-                sheet.append_row([new_id, st.session_state['username'], recipient, shirt_img, pants_img, 0, ""])
-                st.success("Combinaison enregistrée et partagée !")
+                if sheet:
+                    new_id = len(data) + 1
+                    sheet.append_row([str(new_id), st.session_state['username'], recipient, shirt_img, pants_img, "0", ""])
+                    st.success("Combinaison enregistrée et partagée avec succès !")
+                    st.rerun()
+                else:
+                    st.error("Google Sheets non connecté.")
 
         # --- TAB VISUALISER ---
         with tab_view:
-            st.subheader("Mes combinaisons")
-            # Voir ce que j'ai créé OU ce qui m'a été partagé
-            filtered_data = data[(data['owner'] == st.session_state['username']) | (data['recipient'] == st.session_state['username'])]
-            
-            for index, row in filtered_data.iterrows():
-                with st.container(border=True):
-                    c1, c2 = st.columns(2)
-                    c1.image(row['shirt_url'], caption="Chandail", use_container_width=True)
-                    c2.image(row['pants_url'], caption="Pantalon", use_container_width=True)
-                    st.write(f"Note reçue : **{row['rating']}/100**")
-                    st.write(f"Notes : {row['notes']}")
+            st.subheader("Toutes les combinaisons (Mes créations & partagées avec moi)")
+            if not data.empty:
+                # Filtrer les lignes où je suis owner ou recipient
+                filtered_data = data[(data['owner'] == st.session_state['username']) | (data['recipient'] == st.session_state['username'])]
+                
+                if filtered_data.empty:
+                    st.info("Aucune combinaison pour l'instant.")
+                else:
+                    for index, row in filtered_data.iterrows():
+                        with st.container(border=True):
+                            c1, c2 = st.columns(2)
+                            if row['shirt_url']:
+                                c1.image(row['shirt_url'], caption="Chandail", use_container_width=True)
+                            else:
+                                c1.write("Pas d'image chandail")
+                                
+                            if row['pants_url']:
+                                c2.image(row['pants_url'], caption="Pantalon", use_container_width=True)
+                            else:
+                                c2.write("Pas d'image pantalon")
+                                
+                            st.write(f"Créateur : `{row['owner']}` | Partagé avec : `{row['recipient']}`")
+                            st.markdown(f"⭐ Note reçue : **{row['rating']}/100**")
+                            st.markdown(f"💬 Commentaire : *{row['notes'] if row['notes'] else 'Aucun commentaire'}*")
+            else:
+                st.info("Aucune donnée enregistrée dans le système pour le moment.")
 
         # --- TAB NOTER ---
         with tab_rate:
-            st.subheader("Combinés à noter")
-            # Filtrer pour ne voir que ce qui m'a été partagé
-            to_rate = data[data['recipient'] == st.session_state['username']]
+            st.subheader("Combinaisons partagées avec vous à noter")
+            if not data.empty:
+                to_rate = data[data['recipient'] == st.session_state['username']]
+                
+                if to_rate.empty:
+                    st.info("Aucune combinaison partagée avec vous pour le moment.")
+                else:
+                    for index, row in to_rate.iterrows():
+                        with st.expander(f"Combinaison de {row['owner']} (ID: {row['id']})"):
+                            c1, c2 = st.columns(2)
+                            if row['shirt_url']:
+                                c1.image(row['shirt_url'])
+                            if row['pants_url']:
+                                c2.image(row['pants_url'])
+                            
+                            # Conversion sécurisée de la note actuelle
+                            try:
+                                current_rating = int(row['rating'])
+                            except ValueError:
+                                current_rating = 0
+                                
+                            new_rating = st.number_input("Note /100", min_value=0, max_value=100, value=current_rating, key=f"rate_{row['id']}")
+                            new_note = st.text_input("Commentaire", value=str(row['notes']), key=f"note_{row['id']}")
+                            
+                            if st.button("Enregistrer la note", key=f"save_{row['id']}_{index}"):
+                                if sheet:
+                                    # index + 2 car index 0 correspond à la ligne 2 dans Google Sheets (la ligne 1 étant l'en-tête)
+                                    row_to_update = index + 2
+                                    sheet.update_cell(row_to_update, 6, str(new_rating)) # Colonne F (rating)
+                                    sheet.update_cell(row_to_update, 7, str(new_note))   # Colonne G (notes)
+                                    st.success("Note et commentaire mis à jour avec succès !")
+                                    st.rerun()
+            else:
+                st.info("Rien à noter pour l'instant.")
+
+    # --- PAGES DES AUTRES SOUS-SYSTÈMES (2 à 9) ---
+    elif page.startswith("Système"):
+        if st.button("← Retour au tableau de bord"):
+            st.session_state["current_page"] = "Accueil"
+            st.rerun()
             
-            for index, row in to_rate.iterrows():
-                with st.expander(f"Combinaison ID: {row['id']}"):
-                    c1, c2 = st.columns(2)
-                    c1.image(row['shirt_url'])
-                    c2.image(row['pants_url'])
-                    
-                    # Formulaire de notation
-                    new_rating = st.number_input(f"Note /100", min_value=0, max_value=100, value=int(row['rating']), key=f"rate_{row['id']}")
-                    new_note = st.text_input(f"Commentaire", value=str(row['notes']), key=f"note_{row['id']}")
-                    
-                    if st.button("Enregistrer la note", key=f"save_{row['id']}"):
-                        # Trouver la ligne correspondante dans Google Sheet (+2 car index 0 et header)
-                        row_to_update = index + 2
-                        sheet.update_cell(row_to_update, 6, new_rating) # Colonne rating
-                        sheet.update_cell(row_to_update, 7, new_note)   # Colonne notes
-                        st.success("Note mise à jour !")
-                        st.rerun()
+        st.title(f"⚙️ {page}")
+        st.markdown(f"Espace de travail et de configuration pour le **{page}**.")
+        st.info("Ce module sera configuré prochainement.")
