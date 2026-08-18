@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from datetime import datetime
 
-# Essai d'importation de gspread pour Google Sheets
+# Vérification de l'installation de gspread
 try:
     import gspread
     from google.oauth2.service_account import Credentials
@@ -19,61 +19,55 @@ st.set_page_config(page_title="Mon Application Web", page_icon="🚀", layout="w
 # FONCTIONS BASES DE DONNÉES / GOOGLE SHEETS
 # ==========================================
 
-def clean_private_key(key_str):
-    """Reconstruit une clé PEM parfaite peu importe le formatage TOML."""
-    if not isinstance(key_str, str):
-        return key_str
-    
-    # Remplacer les \n littéraux
-    key_str = key_str.replace("\\n", "\n")
-    
-    header = "-----BEGIN PRIVATE KEY-----"
-    footer = "-----END PRIVATE KEY-----"
-    
-    if header in key_str and footer in key_str:
-        # Extraire uniquement le corps Base64
-        parts = key_str.split(header)
-        body_and_footer = parts[1].split(footer)
-        raw_body = body_and_footer[0]
-        
-        # Supprimer tous les espaces, retours à la ligne et caractères parasites
-        clean_body = "".join(raw_body.split())
-        
-        # Reconstruire une clé PEM standard
-        return f"{header}\n{clean_body}\n{footer}\n"
-    
-    return key_str
+def clean_private_key(key):
+    """Nettoie la clé privée pour les anciennes méthodes de secrets."""
+    if not key:
+        return key
+    key = key.replace("\\n", "\n")
+    if not key.endswith("\n"):
+        key += "\n"
+    return key
 
 def get_gsheet_client():
-    """Connexion à Google Sheets via les secrets Streamlit."""
+    """Connexion robuste à Google Sheets via JSON brut."""
     if not GSPREAD_AVAILABLE:
+        st.error("L'extension gspread n'est pas installée. Vérifie ton requirements.txt")
         return None
+        
     try:
-        if "gcp_service_account" in st.secrets:
-            # Copie du dictionnaire des secrets
-            creds_dict = dict(st.secrets["gcp_service_account"])
+        creds_dict = None
+        
+        # 1. Lecture depuis le JSON brut (La méthode infaillible)
+        if "gcp_json" in st.secrets:
+            creds_dict = json.loads(st.secrets["gcp_json"])
             
-            # Nettoyage automatique et réparation de la clé
+        # 2. Lecture depuis l'ancienne méthode TOML (Fallback de sécurité)
+        elif "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = clean_private_key(creds_dict["private_key"])
 
+        # Connexion finale à l'API Google
+        if creds_dict:
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"
             ]
             credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-            client = gspread.authorize(credentials)
-            return client
+            return gspread.authorize(credentials)
+        else:
+            return None
+            
     except Exception as e:
-        st.error(f"Erreur de connexion à Google Sheets : {e}")
-    return None
+        st.error(f"Erreur technique lors de la connexion Google Sheets : {e}")
+        return None
 
 def hash_password(password):
     """Hache le mot de passe pour la sécurité."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def load_users():
-    """Charge la liste des utilisateurs depuis Google Sheets ou localement en secours."""
+    """Charge la liste des utilisateurs depuis Google Sheets ou localement."""
     client = get_gsheet_client()
     if client:
         try:
@@ -84,9 +78,9 @@ def load_users():
                 users_dict[str(r["username"])] = str(r["password_hash"])
             return users_dict
         except Exception as e:
-            st.warning("Impossible de lire Google Sheets. Utilisation du stockage local temporaire.")
+            st.warning("Connexion Google Sheets établie, mais impossible de lire l'onglet 'users'.")
     
-    # Mode secours local (fichiers JSON)
+    # Mode secours local
     if os.path.exists("users.json"):
         with open("users.json", "r") as f:
             return json.load(f)
@@ -165,9 +159,9 @@ if not st.session_state["logged_in"]:
             else:
                 saved_online = save_user(new_user, hash_password(new_pass))
                 if saved_online:
-                    st.success("Compte créé et enregistré sur Google Sheets ! Vous pouvez vous connecter.")
+                    st.success("✅ Compte créé et enregistré sur Google Sheets ! Vous pouvez vous connecter.")
                 else:
-                    st.success("Compte créé localement. Configurer Google Sheets pour la sauvegarde permanente.")
+                    st.success("⚠️ Compte créé localement. La connexion à Google Sheets a échoué.")
 
 # ==========================================
 # TABLEAU DE BORD & SYSTÈMES (CONNECTÉ)
@@ -189,7 +183,7 @@ else:
             ["Accueil / Aperçu", "Système 1", "Système 2", "Système 3"]
         )
 
-    # Contenu principal selon le système choisi
+    # Contenu principal
     if system_choice == "Accueil / Aperçu":
         st.title("🏠 Tableau de Bord Principal")
         st.markdown(f"Content de te revoir, **{st.session_state['username']}** !")
@@ -197,9 +191,9 @@ else:
         # Statut Google Sheets
         client = get_gsheet_client()
         if client:
-            st.success("✅ Connecté à Google Sheets avec succès ! Tes données sont enregistrées en permanence.")
+            st.success("✅ Connecté à Google Sheets avec succès ! Tes données sont sécurisées.")
         else:
-            st.info("ℹ️ Mode stockage local actif. Suis le guide ci-dessous pour connecter ton Google Sheet.")
+            st.error("❌ Mode stockage local actif (Google Sheets non connecté).")
 
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -212,20 +206,6 @@ else:
     elif system_choice == "Système 1":
         st.title("⚙️ Système 1")
         st.write("Espace de travail pour le premier module.")
-        
-        st.subheader("Enregistrer une information")
-        info_perso = st.text_input("Entrez une donnée à sauvegarder :")
-        if st.button("Sauvegarder l'information"):
-            client = get_gsheet_client()
-            if client:
-                try:
-                    sheet = client.open("Streamlit_DB").worksheet("data")
-                    sheet.append_row([st.session_state['username'], info_perso, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-                    st.success("Donnée sauvegardée dans Google Sheets !")
-                except Exception as e:
-                    st.error(f"Erreur : {e}")
-            else:
-                st.warning("Google Sheets n'est pas encore configuré.")
 
     elif system_choice == "Système 2":
         st.title("📊 Système 2")
