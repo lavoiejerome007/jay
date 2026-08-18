@@ -31,23 +31,17 @@ def clean_private_key(key):
 def get_gsheet_client():
     """Connexion robuste à Google Sheets via JSON brut."""
     if not GSPREAD_AVAILABLE:
-        st.error("L'extension gspread n'est pas installée. Vérifie ton requirements.txt")
         return None
         
     try:
         creds_dict = None
-        
-        # 1. Lecture depuis le JSON brut (La méthode infaillible)
         if "gcp_json" in st.secrets:
             creds_dict = json.loads(st.secrets["gcp_json"])
-            
-        # 2. Lecture depuis l'ancienne méthode TOML (Fallback de sécurité)
         elif "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = clean_private_key(creds_dict["private_key"])
 
-        # Connexion finale à l'API Google
         if creds_dict:
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
@@ -55,19 +49,14 @@ def get_gsheet_client():
             ]
             credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
             return gspread.authorize(credentials)
-        else:
-            return None
-            
-    except Exception as e:
-        st.error(f"Erreur technique lors de la connexion Google Sheets : {e}")
+        return None
+    except Exception:
         return None
 
 def hash_password(password):
-    """Hache le mot de passe pour la sécurité."""
     return hashlib.sha256(password.encode()).hexdigest()
 
 def load_users():
-    """Charge la liste des utilisateurs depuis Google Sheets ou localement."""
     client = get_gsheet_client()
     if client:
         try:
@@ -77,17 +66,15 @@ def load_users():
             for r in records:
                 users_dict[str(r["username"])] = str(r["password_hash"])
             return users_dict
-        except Exception as e:
-            st.warning("Connexion Google Sheets établie, mais impossible de lire l'onglet 'users'.")
+        except Exception:
+            pass
     
-    # Mode secours local
     if os.path.exists("users.json"):
         with open("users.json", "r") as f:
             return json.load(f)
     return {"admin": hash_password("1234")}
 
 def save_user(username, password_hash):
-    """Sauvegarde un nouvel utilisateur dans Google Sheets et/ou localement."""
     client = get_gsheet_client()
     saved_to_gsheet = False
     
@@ -96,10 +83,9 @@ def save_user(username, password_hash):
             sheet = client.open("Streamlit_DB").worksheet("users")
             sheet.append_row([username, password_hash, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
             saved_to_gsheet = True
-        except Exception as e:
-            st.error(f"Erreur lors de la sauvegarde sur Google Sheets : {e}")
+        except Exception:
+            pass
 
-    # Sauvegarde locale en parallèle
     users = {}
     if os.path.exists("users.json"):
         with open("users.json", "r") as f:
@@ -111,13 +97,15 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 # ==========================================
-# GESTION DE LA SESSION & AUTHENTIFICATION
+# GESTION DE LA SESSION & NAVIGATION
 # ==========================================
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 if "username" not in st.session_state:
     st.session_state["username"] = ""
+if "current_page" not in st.session_state:
+    st.session_state["current_page"] = "Accueil"
 
 # ==========================================
 # PAGE DE CONNEXION / INSCRIPTION
@@ -125,7 +113,7 @@ if "username" not in st.session_state:
 
 if not st.session_state["logged_in"]:
     st.title("🔐 Bienvenue sur votre Application")
-    st.markdown("Connectez-vous ou créez un compte pour accéder aux différents systèmes.")
+    st.markdown("Connectez-vous ou créez un compte pour accéder à vos systèmes.")
     
     tab_login, tab_register = st.tabs(["🔑 Se connecter", "📝 Créer un compte"])
     
@@ -138,6 +126,7 @@ if not st.session_state["logged_in"]:
             if user_input in users and users[user_input] == hash_password(pass_input):
                 st.session_state["logged_in"] = True
                 st.session_state["username"] = user_input
+                st.session_state["current_page"] = "Accueil"
                 st.success(f"Bienvenue {user_input} !")
                 st.rerun()
             else:
@@ -159,58 +148,119 @@ if not st.session_state["logged_in"]:
             else:
                 saved_online = save_user(new_user, hash_password(new_pass))
                 if saved_online:
-                    st.success("✅ Compte créé et enregistré sur Google Sheets ! Vous pouvez vous connecter.")
+                    st.success("✅ Compte créé et enregistré sur Google Sheets !")
                 else:
-                    st.success("⚠️ Compte créé localement. La connexion à Google Sheets a échoué.")
+                    st.success("⚠️ Compte créé localement.")
 
 # ==========================================
-# TABLEAU DE BORD & SYSTÈMES (CONNECTÉ)
+# APPLICATION PRINCIPALE (CONNECTÉ)
 # ==========================================
 
 else:
-    # Barre latérale (Sidebar)
+    # Sidebar personnalisée basée sur ton croquis
     with st.sidebar:
-        st.write(f"👤 Connecté en tant que : **{st.session_state['username']}**")
-        if st.button("Se déconnecter", type="secondary"):
-            st.session_state["logged_in"] = False
-            st.session_state["username"] = ""
+        # 1. Boîte de profil en haut
+        with st.container(border=True):
+            st.markdown(f"**Bienvenue**<br>`{st.session_state['username']}`", unsafe_allow_html=True)
+            if st.button("👤 Mon Profil", use_container_width=True):
+                st.session_state["current_page"] = "Profil"
+                st.rerun()
+
+        st.divider()
+
+        # 2. Utilitaires ajoutés entre le profil et la déconnexion
+        st.subheader("🛠️ Utilitaires")
+        if st.button("🏠 Tableau de bord", use_container_width=True):
+            st.session_state["current_page"] = "Accueil"
             st.rerun()
             
+        with st.expander("📊 Statistiques rapides"):
+            st.metric("Systèmes actifs", "9 / 9")
+            st.metric("Statut Cloud", "Connecté" if get_gsheet_client() else "Local")
+
         st.divider()
-        st.subheader("📌 Menu des Systèmes")
-        system_choice = st.radio(
-            "Choisissez un système :",
-            ["Accueil / Aperçu", "Système 1", "Système 2", "Système 3"]
-        )
 
-    # Contenu principal
-    if system_choice == "Accueil / Aperçu":
-        st.title("🏠 Tableau de Bord Principal")
-        st.markdown(f"Content de te revoir, **{st.session_state['username']}** !")
+        # 3. Bouton déconnecté tout en bas
+        if st.button("🚪 Se déconnecter", type="secondary", use_container_width=True):
+            st.session_state["logged_in"] = False
+            st.session_state["username"] = ""
+            st.session_state["current_page"] = "Accueil"
+            st.rerun()
+
+    # Gestion de l'affichage de la page centrale
+    page = st.session_state["current_page"]
+
+    # --- PAGE ACCUEIL : GRILLE 3x3 DES SYSTÈMES ---
+    if page == "Accueil":
+        st.title("🎛️ Tableau de Bord des Systèmes")
+        st.markdown("Sélectionnez un système ci-dessous pour ouvrir son espace dédié.")
+        st.write("")
+
+        systems = [
+            "Système 1", "Système 2", "Système 3",
+            "Système 4", "Système 5", "Système 6",
+            "Système 7", "Système 8", "Système 9"
+        ]
+
+        # Grille 3x3
+        for i in range(0, 9, 3):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                with st.container(border=True):
+                    st.subheader(systems[i])
+                    st.write("Accéder au module.")
+                    if st.button(f"Ouvrir {systems[i]}", key=f"btn_{i}", use_container_width=True):
+                        st.session_state["current_page"] = systems[i]
+                        st.rerun()
+                        
+            with col2:
+                with st.container(border=True):
+                    st.subheader(systems[i+1])
+                    st.write("Accéder au module.")
+                    if st.button(f"Ouvrir {systems[i+1]}", key=f"btn_{i+1}", use_container_width=True):
+                        st.session_state["current_page"] = systems[i+1]
+                        st.rerun()
+                        
+            with col3:
+                with st.container(border=True):
+                    st.subheader(systems[i+2])
+                    st.write("Accéder au module.")
+                    if st.button(f"Ouvrir {systems[i+2]}", key=f"btn_{i+2}", use_container_width=True):
+                        st.session_state["current_page"] = systems[i+2]
+                        st.rerun()
+            st.write("")
+
+    # --- PAGE PROFIL ---
+    elif page == "Profil":
+        if st.button("← Retour au tableau de bord"):
+            st.session_state["current_page"] = "Accueil"
+            st.rerun()
+            
+        st.title("👤 Gestion du Profil")
+        st.write(f"Nom d'utilisateur connecté : **{st.session_state['username']}**")
+        st.info("Espace dédié à la configuration de ton profil utilisateur.")
+
+    # --- PAGES DES SOUS-SYSTÈMES (1 à 9) ---
+    elif page.startswith("Système"):
+        if st.button("← Retour au tableau de bord"):
+            st.session_state["current_page"] = "Accueil"
+            st.rerun()
+            
+        st.title(f"⚙️ {page}")
+        st.markdown(f"Espace de travail et de sauvegarde pour le **{page}**.")
         
-        # Statut Google Sheets
-        client = get_gsheet_client()
-        if client:
-            st.success("✅ Connecté à Google Sheets avec succès ! Tes données sont sécurisées.")
-        else:
-            st.error("❌ Mode stockage local actif (Google Sheets non connecté).")
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Système 1", "Prêt", "Actif")
-        with col2:
-            st.metric("Système 2", "En attente", "Inactif")
-        with col3:
-            st.metric("Système 3", "En attente", "Inactif")
-
-    elif system_choice == "Système 1":
-        st.title("⚙️ Système 1")
-        st.write("Espace de travail pour le premier module.")
-
-    elif system_choice == "Système 2":
-        st.title("📊 Système 2")
-        st.write("Espace pour le deuxième système.")
-
-    elif system_choice == "Système 3":
-        st.title("🛠️ Système 3")
-        st.write("Espace pour le troisième système.")
+        # Enregistrement isolé de données liées à l'utilisateur pour ce système
+        st.subheader("Enregistrer une donnée")
+        user_input_data = st.text_input(f"Entrez l'information pour {page} :")
+        if st.button("Sauvegarder dans Google Sheets"):
+            client = get_gsheet_client()
+            if client:
+                try:
+                    sheet = client.open("Streamlit_DB").worksheet("data")
+                    sheet.append_row([st.session_state['username'], page, user_input_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+                    st.success("Donnée enregistrée avec succès !")
+                except Exception as e:
+                    st.error(f"Erreur d'écriture : {e}")
+            else:
+                st.warning("Google Sheets non connecté.")
