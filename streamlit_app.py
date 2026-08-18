@@ -242,25 +242,70 @@ else:
         st.info("Espace dédié à la configuration de ton profil utilisateur.")
 
     # --- PAGES DES SOUS-SYSTÈMES (1 à 9) ---
-    elif page.startswith("Système"):
+    # --- PAGE FIT-NOTE (SYSTÈME 1) ---
+    elif page == "Système 1": # Renomme dans ton menu si besoin
         if st.button("← Retour au tableau de bord"):
             st.session_state["current_page"] = "Accueil"
             st.rerun()
             
-        st.title(f"⚙️ {page}")
-        st.markdown(f"Espace de travail et de sauvegarde pour le **{page}**.")
+        st.title("👕 Fit-Note")
         
-        # Enregistrement isolé de données liées à l'utilisateur pour ce système
-        st.subheader("Enregistrer une donnée")
-        user_input_data = st.text_input(f"Entrez l'information pour {page} :")
-        if st.button("Sauvegarder dans Google Sheets"):
-            client = get_gsheet_client()
-            if client:
-                try:
-                    sheet = client.open("Streamlit_DB").worksheet("data")
-                    sheet.append_row([st.session_state['username'], page, user_input_data, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-                    st.success("Donnée enregistrée avec succès !")
-                except Exception as e:
-                    st.error(f"Erreur d'écriture : {e}")
-            else:
-                st.warning("Google Sheets non connecté.")
+        tab_view, tab_rate, tab_add = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter"])
+        
+        client = get_gsheet_client()
+        sheet = client.open("Streamlit_DB").worksheet("FitNote")
+        data = pd.DataFrame(sheet.get_all_records())
+
+        # --- TAB AJOUTER ---
+        with tab_add:
+            st.subheader("Ajouter une combinaison")
+            col_a, col_b = st.columns(2)
+            shirt_img = col_a.text_input("URL Image Chandail")
+            pants_img = col_b.text_input("URL Image Pantalon")
+            
+            # Récupérer la liste des utilisateurs pour le partage
+            all_users = list(load_users().keys())
+            recipient = st.selectbox("Partager avec :", all_users)
+            
+            if st.button("Sauvegarder la combinaison"):
+                new_id = len(data) + 1
+                sheet.append_row([new_id, st.session_state['username'], recipient, shirt_img, pants_img, 0, ""])
+                st.success("Combinaison enregistrée et partagée !")
+
+        # --- TAB VISUALISER ---
+        with tab_view:
+            st.subheader("Mes combinaisons")
+            # Voir ce que j'ai créé OU ce qui m'a été partagé
+            filtered_data = data[(data['owner'] == st.session_state['username']) | (data['recipient'] == st.session_state['username'])]
+            
+            for index, row in filtered_data.iterrows():
+                with st.container(border=True):
+                    c1, c2 = st.columns(2)
+                    c1.image(row['shirt_url'], caption="Chandail", use_container_width=True)
+                    c2.image(row['pants_url'], caption="Pantalon", use_container_width=True)
+                    st.write(f"Note reçue : **{row['rating']}/100**")
+                    st.write(f"Notes : {row['notes']}")
+
+        # --- TAB NOTER ---
+        with tab_rate:
+            st.subheader("Combinés à noter")
+            # Filtrer pour ne voir que ce qui m'a été partagé
+            to_rate = data[data['recipient'] == st.session_state['username']]
+            
+            for index, row in to_rate.iterrows():
+                with st.expander(f"Combinaison ID: {row['id']}"):
+                    c1, c2 = st.columns(2)
+                    c1.image(row['shirt_url'])
+                    c2.image(row['pants_url'])
+                    
+                    # Formulaire de notation
+                    new_rating = st.number_input(f"Note /100", min_value=0, max_value=100, value=int(row['rating']), key=f"rate_{row['id']}")
+                    new_note = st.text_input(f"Commentaire", value=str(row['notes']), key=f"note_{row['id']}")
+                    
+                    if st.button("Enregistrer la note", key=f"save_{row['id']}"):
+                        # Trouver la ligne correspondante dans Google Sheet (+2 car index 0 et header)
+                        row_to_update = index + 2
+                        sheet.update_cell(row_to_update, 6, new_rating) # Colonne rating
+                        sheet.update_cell(row_to_update, 7, new_note)   # Colonne notes
+                        st.success("Note mise à jour !")
+                        st.rerun()
