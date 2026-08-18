@@ -24,9 +24,14 @@ def get_gsheet_client():
     if not GSPREAD_AVAILABLE:
         return None
     try:
-        # Vérification si les clés sont configurées dans st.secrets
         if "gcp_service_account" in st.secrets:
+            # Copie du dictionnaire des secrets pour modifications
             creds_dict = dict(st.secrets["gcp_service_account"])
+            
+            # Nettoyage automatique du formatage de la clé privée
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
             scopes = [
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"
@@ -47,7 +52,6 @@ def load_users():
     client = get_gsheet_client()
     if client:
         try:
-            # Remplacez "Streamlit_DB" par le nom exact de votre fichier Google Sheet
             sheet = client.open("Streamlit_DB").worksheet("users")
             records = sheet.get_all_records()
             users_dict = {}
@@ -141,7 +145,7 @@ if not st.session_state["logged_in"]:
                     st.success("Compte créé localement. Configurer Google Sheets pour la sauvegarde permanente.")
 
 # ==========================================
-# TABLEAU DE BORDS & SYSTÈMES (CONNECTED)
+# TABLEAU DE BORD & SYSTÈMES (CONNECTÉ)
 # ==========================================
 
 else:
