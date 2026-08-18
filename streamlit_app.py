@@ -100,14 +100,14 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 def file_to_base64(uploaded_file):
-    """Compresse l'image pour l'enregistrer proprement dans Google Sheets."""
+    """Légère compression pour garder une excellente qualité d'image."""
     if uploaded_file is not None:
         try:
             image = Image.open(uploaded_file)
-            image.thumbnail((300, 300))
+            image.thumbnail((800, 800))
             
             buffered = io.BytesIO()
-            image.save(buffered, format="JPEG", quality=60)
+            image.save(buffered, format="JPEG", quality=85)
             encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
             return f"data:image/jpeg;base64,{encoded}"
         except Exception:
@@ -325,19 +325,19 @@ else:
             item_type = st.selectbox("Type de vêtement", ["Chandail (Haut)", "Pantalon (Bas)"])
             item_file = st.file_uploader("📸 Glisser ou sélectionner l'image", type=["png", "jpg", "jpeg"], key="item_up")
             
-            all_users = list(load_users().keys())
-            recipient = st.selectbox("Partager avec :", all_users)
+            # Saisie manuelle du nom d'utilisateur pour le partage
+            recipient = st.text_input("Partager avec (nom d'utilisateur, optionnel) :")
             
             if st.button("Sauvegarder l'item"):
                 if item_file:
-                    with st.spinner("Compression et enregistrement en cours..."):
+                    with st.spinner("Traitement de l'image en cours..."):
                         img_b64 = file_to_base64(item_file)
                         type_val = "shirt" if "Chandail" in item_type else "pants"
                     
                     if client:
                         sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url'])
                         new_id = len(items_df) + 1
-                        sheet_items.append_row([str(new_id), st.session_state['username'], recipient, type_val, img_b64])
+                        sheet_items.append_row([str(new_id), st.session_state['username'], recipient.strip(), type_val, img_b64])
                         st.success("Pièce de linge enregistrée et partagée avec succès !")
                         st.rerun()
                     else:
@@ -372,7 +372,7 @@ else:
                         combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
                         
                         with st.container(border=True):
-                            # Affichage vertical sans légende : Chandail au-dessus du pantalon, largeur 500
+                            # Affichage direct l'une sur l'autre sans légende, taille 500
                             if s['image_url']:
                                 st.image(s['image_url'], width=500)
                             if p['image_url']:
@@ -394,7 +394,7 @@ else:
                         combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
                         
                         with st.expander(f"Combinaison (Chandail #{s['id']} + Pantalon #{p['id']})"):
-                            # Affichage vertical sans légende : Chandail au-dessus du pantalon, largeur 500
+                            # Affichage direct l'une sur l'autre sans légende, taille 500
                             if s['image_url']:
                                 st.image(s['image_url'], width=500)
                             if p['image_url']:
