@@ -116,7 +116,6 @@ def file_to_base64(uploaded_file):
             image.save(buffered, format="JPEG", quality=75)
             encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
             
-            # Sécurité anti-dépassement de la limite Google Sheets (50k caractères par cellule)
             if len(encoded) > 48000:
                 buffered = io.BytesIO()
                 image.thumbnail((400, 400))
@@ -139,9 +138,9 @@ def get_or_create_worksheet(client, sheet_name, default_cols):
     return sheet
 
 def load_fit_items():
-    """Charge les pièces de linge (chandails et pantalons)."""
+    """Charge les pièces de linge (incluant les collections)."""
     client = get_gsheet_client()
-    default_cols = ['id', 'owner', 'recipient', 'type', 'image_url']
+    default_cols = ['id', 'owner', 'recipient', 'type', 'image_url', 'collection']
     if not client:
         return pd.DataFrame(columns=default_cols)
     try:
@@ -149,8 +148,20 @@ def load_fit_items():
         rows = sheet.get_all_values()
         if not rows or len(rows) <= 1:
             return pd.DataFrame(columns=default_cols)
+        
         headers = rows[0]
-        df = pd.DataFrame(rows[1:], columns=headers)
+        # Ajout de la colonne collection si elle manque dans l'ancien Google Sheet
+        if 'collection' not in headers:
+            sheet.update_cell(1, 6, 'collection')
+            headers.append('collection')
+            
+        data = []
+        for r in rows[1:]:
+            while len(r) < len(headers):
+                r.append("")
+            data.append(r[:len(headers)])
+            
+        df = pd.DataFrame(data, columns=headers)
         for col in default_cols:
             if col not in df.columns:
                 df[col] = ""
@@ -178,8 +189,8 @@ def load_fit_ratings():
     except Exception:
         return pd.DataFrame(columns=default_cols)
 
-def delete_fit_item(item_id):
-    """Supprime une pièce de linge du Google Sheet via son ID avec support multi-version."""
+def update_fit_item(item_id, new_recipient, new_collection):
+    """Met à jour le partage et la collection d'une pièce spécifique."""
     client = get_gsheet_client()
     if client:
         try:
@@ -187,7 +198,22 @@ def delete_fit_item(item_id):
             rows = sheet.get_all_values()
             for idx, row in enumerate(rows):
                 if row and row[0] == str(item_id):
-                    # Compatibilité entre les anciennes et nouvelles versions de gspread
+                    sheet.update_cell(idx + 1, 3, new_recipient)
+                    sheet.update_cell(idx + 1, 6, new_collection)
+                    return True, ""
+        except Exception as e:
+            return False, str(e)
+    return False, "Google Sheets non connecté."
+
+def delete_fit_item(item_id):
+    """Supprime une pièce de linge du Google Sheet via son ID."""
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("FitItems")
+            rows = sheet.get_all_values()
+            for idx, row in enumerate(rows):
+                if row and row[0] == str(item_id):
                     if hasattr(sheet, "delete_rows"):
                         sheet.delete_rows(idx + 1)
                     else:
@@ -196,6 +222,50 @@ def delete_fit_item(item_id):
         except Exception as e:
             return False, str(e)
     return False, "Google Sheets non connecté."
+
+def update_collection_recipients(collection_name, owner, new_recipients):
+    """Met à jour les destinataires de toutes les pièces d'une collection."""
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("FitItems")
+            rows = sheet.get_all_values()
+            for idx, row in enumerate(rows):
+                if idx == 0: continue
+                col_val = row[5] if len(row) > 5 else ""
+                if len(row) > 1 and row[1] == owner and col_val == collection_name:
+                    sheet.update_cell(idx + 1, 3, new_recipients)
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+    return False, "Erreur de connexion."
+
+def delete_full_collection(collection_name, owner):
+    """Supprime définitivement toutes les pièces appartenant à une collection."""
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("FitItems")
+            rows = sheet.get_all_values()
+            
+            indices_to_delete = []
+            for idx, row in enumerate(rows):
+                if idx == 0: continue
+                col_val = row[5] if len(row) > 5 else ""
+                if len(row) > 1 and row[1] == owner and col_val == collection_name:
+                    indices_to_delete.append(idx + 1)
+                    
+            # Supprimer de bas en haut pour éviter le décalage des index
+            for row_idx in reversed(indices_to_delete):
+                if hasattr(sheet, "delete_rows"):
+                    sheet.delete_rows(row_idx)
+                else:
+                    sheet.delete_row(row_idx)
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+    return False, "Erreur de connexion."
+
 
 # ==========================================
 # GESTION DE LA SESSION & NAVIGATION
@@ -286,7 +356,6 @@ else:
 
     page = st.session_state["current_page"]
 
-    # --- PAGE ACCUEIL : GRILLE 3x3 DES SYSTÈMES ---
     if page == "Accueil":
         st.title("🎛️ Tableau de Bord des Systèmes")
         st.markdown("Sélectionnez un système ci-dessous pour ouvrir son espace dédié.")
@@ -300,16 +369,13 @@ else:
 
         for i in range(0, 9, 3):
             col1, col2, col3 = st.columns(3)
-            
             with col1:
                 with st.container(border=True):
                     st.subheader(systems[i])
-                    title_name = "Fit-Note" if i == 0 else "Accéder au module."
-                    st.write(title_name)
+                    st.write("Fit-Note" if i == 0 else "Accéder au module.")
                     if st.button(f"Ouvrir {systems[i]}", key=f"btn_{i}", use_container_width=True):
                         st.session_state["current_page"] = systems[i]
                         st.rerun()
-                        
             with col2:
                 with st.container(border=True):
                     st.subheader(systems[i+1])
@@ -317,7 +383,6 @@ else:
                     if st.button(f"Ouvrir {systems[i+1]}", key=f"btn_{i+1}", use_container_width=True):
                         st.session_state["current_page"] = systems[i+1]
                         st.rerun()
-                        
             with col3:
                 with st.container(border=True):
                     st.subheader(systems[i+2])
@@ -325,14 +390,11 @@ else:
                     if st.button(f"Ouvrir {systems[i+2]}", key=f"btn_{i+2}", use_container_width=True):
                         st.session_state["current_page"] = systems[i+2]
                         st.rerun()
-            st.write("")
 
-    # --- PAGE PROFIL ---
     elif page == "Profil":
         if st.button("← Retour au tableau de bord"):
             st.session_state["current_page"] = "Accueil"
             st.rerun()
-            
         st.title("👤 Gestion du Profil")
         st.write(f"Nom d'utilisateur connecté : **{st.session_state['username']}**")
         st.info("Espace dédié à la configuration de ton profil utilisateur.")
@@ -345,20 +407,34 @@ else:
             
         st.title("👕 Fit-Note")
         
-        tab_view, tab_rate, tab_add, tab_items = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter", "👕 Pièces"])
+        tab_view, tab_rate, tab_add, tab_items, tab_collections = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter", "👕 Pièces", "📁 Collections"])
         
         client = get_gsheet_client()
         items_df = load_fit_items()
         ratings_df = load_fit_ratings()
 
+        # Filtrer les items accessibles (à moi ou partagés avec moi)
+        if not items_df.empty:
+            # Sécurité pour gérer les destinataires multiples (séparés par des virgules)
+            accessible_items = items_df[
+                (items_df['owner'] == st.session_state['username']) | 
+                (items_df['recipient'].str.contains(st.session_state['username'], na=False))
+            ]
+        else:
+            accessible_items = pd.DataFrame()
+
+        ratings_dict = {}
+        if not ratings_df.empty:
+            for _, r in ratings_df.iterrows():
+                ratings_dict[str(r['combo_id'])] = {"rating": r['rating'], "notes": r['notes']}
+
         # --- TAB AJOUTER ---
         with tab_add:
             st.subheader("Ajouter une pièce de linge")
-            
             item_type = st.selectbox("Type de vêtement", ["Chandail (Haut)", "Pantalon (Bas)"])
+            item_col = st.text_input("Nom de la collection (Optionnel)")
+            recipient = st.text_input("Partager avec (nom d'utilisateur, séparé par des virgules) :")
             item_file = st.file_uploader("📸 Glisser ou sélectionner l'image", type=["png", "jpg", "jpeg"], key="item_up")
-            
-            recipient = st.text_input("Partager avec (nom d'utilisateur, optionnel) :")
             
             if st.button("Sauvegarder l'item"):
                 if item_file:
@@ -368,39 +444,22 @@ else:
                     
                     if client and img_b64:
                         new_id = int(datetime.now().timestamp())
-                        
-                        sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url'])
-                        sheet_items.append_row([str(new_id), st.session_state['username'], recipient.strip(), type_val, img_b64])
-                        st.success("Pièce de linge enregistrée et partagée avec succès !")
+                        sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url', 'collection'])
+                        sheet_items.append_row([str(new_id), st.session_state['username'], recipient.strip(), type_val, img_b64, item_col.strip()])
+                        st.success("Pièce de linge enregistrée !")
                         st.rerun()
                     else:
-                        st.error("Google Sheets non connecté ou erreur de traitement de l'image.")
+                        st.error("Google Sheets non connecté ou erreur de traitement.")
                 else:
                     st.warning("Veuillez importer une image avant de sauvegarder.")
 
-        # Filtrer les items accessibles
-        if not items_df.empty:
-            accessible_items = items_df[(items_df['owner'] == st.session_state['username']) | (items_df['recipient'] == st.session_state['username'])]
-            shirts = accessible_items[accessible_items['type'] == 'shirt'].to_dict('records')
-            pants = accessible_items[accessible_items['type'] == 'pants'].to_dict('records')
-        else:
-            shirts = []
-            pants = []
-
-        ratings_dict = {}
-        if not ratings_df.empty:
-            for _, r in ratings_df.iterrows():
-                ratings_dict[str(r['combo_id'])] = {"rating": r['rating'], "notes": r['notes']}
-
-        # --- TAB PIÈCES (GESTION / SUPPRESSION) ---
+        # --- TAB PIÈCES ---
         with tab_items:
             st.subheader("Gérer mes pièces de linge")
-            
             if items_df.empty:
                 st.info("Aucune pièce dans la base de données.")
             else:
                 my_items = items_df[items_df['owner'] == st.session_state['username']]
-                
                 if my_items.empty:
                     st.info("Tu n'as ajouté aucune pièce pour le moment.")
                 else:
@@ -412,82 +471,160 @@ else:
                                     st.image(row['image_url'], width=150)
                             with col2:
                                 st.write(f"**Type:** {'Chandail (Haut)' if row['type'] == 'shirt' else 'Pantalon (Bas)'}")
-                                st.write(f"**Partagé avec:** `{row['recipient'] if row['recipient'] else 'Personne'}`")
                                 
-                                if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
-                                    with st.spinner("Suppression en cours..."):
-                                        success, error_msg = delete_fit_item(row['id'])
-                                        if success:
-                                            st.success("Pièce supprimée avec succès !")
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Erreur lors de la suppression : {error_msg}")
+                                # Inputs pour mise à jour
+                                new_col = st.text_input("Collection", value=row.get('collection', ''), key=f"upd_col_{row['id']}")
+                                new_recip = st.text_input("Partagé avec (noms séparés par ,)", value=row.get('recipient', ''), key=f"upd_recip_{row['id']}")
+                                
+                                colA, colB = st.columns(2)
+                                with colA:
+                                    if st.button("💾 Mettre à jour", key=f"btn_upd_{row['id']}"):
+                                        with st.spinner("Mise à jour..."):
+                                            success, err = update_fit_item(row['id'], new_recip.strip(), new_col.strip())
+                                            if success:
+                                                st.success("Mise à jour réussie !")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Erreur : {err}")
+                                with colB:
+                                    if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
+                                        with st.spinner("Suppression en cours..."):
+                                            success, error_msg = delete_fit_item(row['id'])
+                                            if success:
+                                                st.success("Pièce supprimée avec succès !")
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Erreur lors de la suppression : {error_msg}")
 
-        # --- TAB VISUALISER ---
-        with tab_view:
-            st.subheader("Toutes les combinaisons possibles (Chandails + Pantalons)")
-            if not shirts or not pants:
-                st.info("Ajoutez au moins un chandail et un pantalon (ou attendez des partages) pour voir les combinaisons.")
+        # --- TAB COLLECTIONS ---
+        with tab_collections:
+            st.subheader("Gérer mes collections")
+            if items_df.empty:
+                st.info("Aucune donnée disponible.")
             else:
-                for s in shirts:
-                    for p in pants:
-                        combo_id = f"S{s['id']}_P{p['id']}"
-                        combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
+                my_items = items_df[items_df['owner'] == st.session_state['username']]
+                # Trouver les collections uniques non vides
+                my_collections = my_items[my_items['collection'].str.strip() != '']['collection'].unique()
+                
+                if len(my_collections) == 0:
+                    st.info("Tu n'as aucune collection pour le moment. Ajoute une collection à une pièce dans l'onglet 'Pièces'.")
+                
+                for col_name in my_collections:
+                    st.markdown(f"### 📁 Collection : {col_name}")
+                    col_items = my_items[my_items['collection'] == col_name]
+                    
+                    with st.expander(f"⚙️ Actions pour la collection '{col_name}'"):
+                        new_col_recip = st.text_input("Partager TOUTE la collection avec (noms séparés par ,) :", key=f"share_col_{col_name}")
+                        if st.button("Appliquer le partage", key=f"btn_share_{col_name}"):
+                            with st.spinner("Mise à jour du partage..."):
+                                success, err = update_collection_recipients(col_name, st.session_state['username'], new_col_recip)
+                                if success: st.rerun()
+                                else: st.error(err)
                         
-                        with st.container(border=True):
-                            if s['image_url']:
-                                st.image(s['image_url'], width=500)
-                            if p['image_url']:
-                                st.image(p['image_url'], width=500)
-                                
-                            st.write(f"Créateur Chandail : `{s['owner']}` | Créateur Pantalon : `{p['owner']}`")
-                            st.markdown(f"⭐ Note reçue : **{combo_data['rating']}/100**")
-                            st.markdown(f"💬 Commentaire : *{combo_data['notes'] if combo_data['notes'] else 'Aucun commentaire'}*")
+                        st.divider()
+                        st.warning("⚠️ La suppression d'une collection effacera TOUTES les pièces qui s'y trouvent.")
+                        if st.button("🚨 Confirmer la suppression de la collection", key=f"btn_del_col_{col_name}"):
+                            with st.spinner("Suppression de la collection..."):
+                                success, err = delete_full_collection(col_name, st.session_state['username'])
+                                if success: st.rerun()
+                                else: st.error(err)
+                    
+                    # Liste des pièces dans cette collection
+                    for idx, row in col_items.iterrows():
+                        colA, colB = st.columns([1, 4])
+                        with colA:
+                            if row['image_url']: st.image(row['image_url'], width=80)
+                        with colB:
+                            st.write(f"**{'Chandail' if row['type'] == 'shirt' else 'Pantalon'}** (Partagé avec: `{row['recipient'] if row['recipient'] else 'Personne'}`)")
+                            if st.button("Retirer de la collection", key=f"rm_col_{row['id']}"):
+                                update_fit_item(row['id'], row['recipient'], "")
+                                st.rerun()
+                    st.divider()
 
-        # --- TAB NOTER ---
+        # --- TAB VISUALISER (SÉPARÉ PAR COLLECTION) ---
+        with tab_view:
+            st.subheader("Combinaisons par Collection")
+            if accessible_items.empty:
+                st.info("Ajoutez au moins un chandail et un pantalon pour voir les combinaisons.")
+            else:
+                unique_collections = accessible_items['collection'].fillna("").unique()
+                
+                for col_name in unique_collections:
+                    display_name = col_name if str(col_name).strip() != "" else "Général (Sans collection)"
+                    col_items = accessible_items[accessible_items['collection'] == col_name]
+                    
+                    shirts = col_items[col_items['type'] == 'shirt'].to_dict('records')
+                    pants = col_items[col_items['type'] == 'pants'].to_dict('records')
+                    
+                    if shirts and pants:
+                        st.markdown(f"### 📁 {display_name}")
+                        for s in shirts:
+                            for p in pants:
+                                combo_id = f"S{s['id']}_P{p['id']}"
+                                combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
+                                
+                                with st.container(border=True):
+                                    if s['image_url']: st.image(s['image_url'], width=500)
+                                    if p['image_url']: st.image(p['image_url'], width=500)
+                                        
+                                    st.write(f"Créateur Chandail : `{s['owner']}` | Créateur Pantalon : `{p['owner']}`")
+                                    st.markdown(f"⭐ Note reçue : **{combo_data['rating']}/100**")
+                                    st.markdown(f"💬 Commentaire : *{combo_data['notes'] if combo_data['notes'] else 'Aucun commentaire'}*")
+                        st.write("")
+
+        # --- TAB NOTER (SÉPARÉ PAR COLLECTION) ---
         with tab_rate:
-            st.subheader("Noter les combinaisons de linge")
-            if not shirts or not pants:
+            st.subheader("Noter les combinaisons (Par Collection)")
+            if accessible_items.empty:
                 st.info("Aucune combinaison disponible à noter pour le moment.")
             else:
-                for s in shirts:
-                    for p in pants:
-                        combo_id = f"S{s['id']}_P{p['id']}"
-                        combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
-                        
-                        with st.expander(f"Combinaison (Chandail #{s['id']} + Pantalon #{p['id']})"):
-                            if s['image_url']:
-                                st.image(s['image_url'], width=500)
-                            if p['image_url']:
-                                st.image(p['image_url'], width=500)
-                            
-                            try:
-                                current_rating = int(combo_data['rating'])
-                            except ValueError:
-                                current_rating = 0
+                unique_collections = accessible_items['collection'].fillna("").unique()
+                
+                for col_name in unique_collections:
+                    display_name = col_name if str(col_name).strip() != "" else "Général (Sans collection)"
+                    col_items = accessible_items[accessible_items['collection'] == col_name]
+                    
+                    shirts = col_items[col_items['type'] == 'shirt'].to_dict('records')
+                    pants = col_items[col_items['type'] == 'pants'].to_dict('records')
+                    
+                    if shirts and pants:
+                        st.markdown(f"### 📁 {display_name}")
+                        for s in shirts:
+                            for p in pants:
+                                combo_id = f"S{s['id']}_P{p['id']}"
+                                combo_data = ratings_dict.get(combo_id, {"rating": "0", "notes": ""})
                                 
-                            new_rating = st.number_input("Note /100", min_value=0, max_value=100, value=current_rating, key=f"rate_{combo_id}")
-                            new_note = st.text_input("Commentaire", value=str(combo_data['notes']), key=f"note_{combo_id}")
-                            
-                            if st.button("Enregistrer la note", key=f"save_{combo_id}"):
-                                if client:
-                                    sheet_ratings = get_or_create_worksheet(client, "FitRatings", ['combo_id', 'rating', 'notes'])
-                                    rows = sheet_ratings.get_all_values()
+                                with st.expander(f"Combinaison (Chandail #{s['id']} + Pantalon #{p['id']})"):
+                                    if s['image_url']: st.image(s['image_url'], width=500)
+                                    if p['image_url']: st.image(p['image_url'], width=500)
                                     
-                                    found_row = None
-                                    for idx, r in enumerate(rows[1:], start=2):
-                                        if r and r[0] == combo_id:
-                                            found_row = idx
-                                            break
-                                    
-                                    if found_row:
-                                        sheet_ratings.update_cell(found_row, 2, str(new_rating))
-                                        sheet_ratings.update_cell(found_row, 3, str(new_note))
-                                    else:
-                                        sheet_ratings.append_row([combo_id, str(new_rating), str(new_note)])
+                                    try:
+                                        current_rating = int(combo_data['rating'])
+                                    except ValueError:
+                                        current_rating = 0
                                         
-                                    st.success("Note et commentaire mis à jour avec succès !")
-                                    st.rerun()
+                                    new_rating = st.number_input("Note /100", min_value=0, max_value=100, value=current_rating, key=f"rate_{combo_id}")
+                                    new_note = st.text_input("Commentaire", value=str(combo_data['notes']), key=f"note_{combo_id}")
+                                    
+                                    if st.button("Enregistrer la note", key=f"save_{combo_id}"):
+                                        if client:
+                                            sheet_ratings = get_or_create_worksheet(client, "FitRatings", ['combo_id', 'rating', 'notes'])
+                                            rows = sheet_ratings.get_all_values()
+                                            
+                                            found_row = None
+                                            for idx, r in enumerate(rows[1:], start=2):
+                                                if r and r[0] == combo_id:
+                                                    found_row = idx
+                                                    break
+                                            
+                                            if found_row:
+                                                sheet_ratings.update_cell(found_row, 2, str(new_rating))
+                                                sheet_ratings.update_cell(found_row, 3, str(new_note))
+                                            else:
+                                                sheet_ratings.append_row([combo_id, str(new_rating), str(new_note)])
+                                                
+                                            st.success("Note et commentaire mis à jour !")
+                                            st.rerun()
 
     # --- PAGES DES AUTRES SOUS-SYSTÈMES (2 à 9) ---
     elif page.startswith("Système"):
