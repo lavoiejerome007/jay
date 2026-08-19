@@ -179,20 +179,23 @@ def load_fit_ratings():
         return pd.DataFrame(columns=default_cols)
 
 def delete_fit_item(item_id):
-    """Supprime une pièce de linge du Google Sheet via son ID."""
+    """Supprime une pièce de linge du Google Sheet via son ID avec support multi-version."""
     client = get_gsheet_client()
     if client:
         try:
             sheet = client.open("Streamlit_DB").worksheet("FitItems")
             rows = sheet.get_all_values()
             for idx, row in enumerate(rows):
-                # row[0] correspond à l'ID
                 if row and row[0] == str(item_id):
-                    sheet.delete_row(idx + 1)  # +1 car Google Sheets est indexé à partir de 1
-                    return True
-        except Exception:
-            return False
-    return False
+                    # Compatibilité entre les anciennes et nouvelles versions de gspread
+                    if hasattr(sheet, "delete_rows"):
+                        sheet.delete_rows(idx + 1)
+                    else:
+                        sheet.delete_row(idx + 1)
+                    return True, ""
+        except Exception as e:
+            return False, str(e)
+    return False, "Google Sheets non connecté."
 
 # ==========================================
 # GESTION DE LA SESSION & NAVIGATION
@@ -342,7 +345,6 @@ else:
             
         st.title("👕 Fit-Note")
         
-        # Ajout du quatrième onglet "Pièces"
         tab_view, tab_rate, tab_add, tab_items = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter", "👕 Pièces"])
         
         client = get_gsheet_client()
@@ -365,7 +367,6 @@ else:
                         type_val = "shirt" if "Chandail" in item_type else "pants"
                     
                     if client and img_b64:
-                        # Générer un ID unique basé sur le timestamp pour éviter les doublons lors des suppressions
                         new_id = int(datetime.now().timestamp())
                         
                         sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url'])
@@ -377,7 +378,7 @@ else:
                 else:
                     st.warning("Veuillez importer une image avant de sauvegarder.")
 
-        # Filtrer les items accessibles par l'utilisateur connecté
+        # Filtrer les items accessibles
         if not items_df.empty:
             accessible_items = items_df[(items_df['owner'] == st.session_state['username']) | (items_df['recipient'] == st.session_state['username'])]
             shirts = accessible_items[accessible_items['type'] == 'shirt'].to_dict('records')
@@ -398,7 +399,6 @@ else:
             if items_df.empty:
                 st.info("Aucune pièce dans la base de données.")
             else:
-                # On affiche uniquement les pièces qui appartiennent à l'utilisateur connecté
                 my_items = items_df[items_df['owner'] == st.session_state['username']]
                 
                 if my_items.empty:
@@ -416,12 +416,12 @@ else:
                                 
                                 if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
                                     with st.spinner("Suppression en cours..."):
-                                        success = delete_fit_item(row['id'])
+                                        success, error_msg = delete_fit_item(row['id'])
                                         if success:
                                             st.success("Pièce supprimée avec succès !")
                                             st.rerun()
                                         else:
-                                            st.error("Erreur lors de la suppression. Vérifie ta connexion ou les droits du Google Sheet.")
+                                            st.error(f"Erreur lors de la suppression : {error_msg}")
 
         # --- TAB VISUALISER ---
         with tab_view:
