@@ -100,12 +100,15 @@ def save_user(username, password_hash):
     return saved_to_gsheet
 
 def file_to_base64(uploaded_file):
-    """Convertit, optimise et sécurise la taille de l'image pour Google Sheets."""
+    """Tourne de -90 degrés, optimise et sécurise la taille de l'image pour Google Sheets."""
     if uploaded_file is not None:
         try:
             image = Image.open(uploaded_file)
             if image.mode in ("RGBA", "P"):
                 image = image.convert("RGB")
+                
+            # Rotation de l'image de -90 degrés
+            image = image.rotate(-90, expand=True)
                 
             image.thumbnail((500, 500))
             
@@ -174,6 +177,22 @@ def load_fit_ratings():
         return df
     except Exception:
         return pd.DataFrame(columns=default_cols)
+
+def delete_fit_item(item_id):
+    """Supprime une pièce de linge du Google Sheet via son ID."""
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("FitItems")
+            rows = sheet.get_all_values()
+            for idx, row in enumerate(rows):
+                # row[0] correspond à l'ID
+                if row and row[0] == str(item_id):
+                    sheet.delete_row(idx + 1)  # +1 car Google Sheets est indexé à partir de 1
+                    return True
+        except Exception:
+            return False
+    return False
 
 # ==========================================
 # GESTION DE LA SESSION & NAVIGATION
@@ -323,7 +342,8 @@ else:
             
         st.title("👕 Fit-Note")
         
-        tab_view, tab_rate, tab_add = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter"])
+        # Ajout du quatrième onglet "Pièces"
+        tab_view, tab_rate, tab_add, tab_items = st.tabs(["👁️ Visualiser", "⭐ Noter", "➕ Ajouter", "👕 Pièces"])
         
         client = get_gsheet_client()
         items_df = load_fit_items()
@@ -340,13 +360,15 @@ else:
             
             if st.button("Sauvegarder l'item"):
                 if item_file:
-                    with st.spinner("Traitement et vérification de l'image en cours..."):
+                    with st.spinner("Traitement, rotation et vérification de l'image en cours..."):
                         img_b64 = file_to_base64(item_file)
                         type_val = "shirt" if "Chandail" in item_type else "pants"
                     
                     if client and img_b64:
+                        # Générer un ID unique basé sur le timestamp pour éviter les doublons lors des suppressions
+                        new_id = int(datetime.now().timestamp())
+                        
                         sheet_items = get_or_create_worksheet(client, "FitItems", ['id', 'owner', 'recipient', 'type', 'image_url'])
-                        new_id = len(items_df) + 1
                         sheet_items.append_row([str(new_id), st.session_state['username'], recipient.strip(), type_val, img_b64])
                         st.success("Pièce de linge enregistrée et partagée avec succès !")
                         st.rerun()
@@ -368,6 +390,38 @@ else:
         if not ratings_df.empty:
             for _, r in ratings_df.iterrows():
                 ratings_dict[str(r['combo_id'])] = {"rating": r['rating'], "notes": r['notes']}
+
+        # --- TAB PIÈCES (GESTION / SUPPRESSION) ---
+        with tab_items:
+            st.subheader("Gérer mes pièces de linge")
+            
+            if items_df.empty:
+                st.info("Aucune pièce dans la base de données.")
+            else:
+                # On affiche uniquement les pièces qui appartiennent à l'utilisateur connecté
+                my_items = items_df[items_df['owner'] == st.session_state['username']]
+                
+                if my_items.empty:
+                    st.info("Tu n'as ajouté aucune pièce pour le moment.")
+                else:
+                    for idx, row in my_items.iterrows():
+                        with st.container(border=True):
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                if row['image_url']:
+                                    st.image(row['image_url'], width=150)
+                            with col2:
+                                st.write(f"**Type:** {'Chandail (Haut)' if row['type'] == 'shirt' else 'Pantalon (Bas)'}")
+                                st.write(f"**Partagé avec:** `{row['recipient'] if row['recipient'] else 'Personne'}`")
+                                
+                                if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
+                                    with st.spinner("Suppression en cours..."):
+                                        success = delete_fit_item(row['id'])
+                                        if success:
+                                            st.success("Pièce supprimée avec succès !")
+                                            st.rerun()
+                                        else:
+                                            st.error("Erreur lors de la suppression. Vérifie ta connexion ou les droits du Google Sheet.")
 
         # --- TAB VISUALISER ---
         with tab_view:
