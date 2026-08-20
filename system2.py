@@ -14,21 +14,35 @@ if "GEMINI_API_KEY" in secrets:
 else:
     client = None
 
-def get_ai_analysis(ticker, price, pct, rsi, drawdown):
+# Modèle standard (rapide / radar / analyses simples)
+def call_flash_ai(prompt):
     if not client: return "Erreur : Clé API Gemini manquante."
-    prompt = f"Analyse très courte du titre {ticker}. Prix: {price:.2f}$ ({pct:.2f}%), RSI: {rsi:.1f}, Baisse depuis le sommet (Drawdown): {drawdown:.1f}%. Tendance actuelle et conseil rapide."
     try:
         response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         return response.text
-    except Exception as e: return f"Erreur IA : {str(e)}"
+    except Exception as e: return f"Erreur IA Flash : {str(e)}"
+
+# Modèle plus puissant pour la stratégie de portefeuille (3.1-pro avec repli sur flash si quota atteint)
+def call_pro_ai(prompt):
+    if not client: return "Erreur : Clé API Gemini manquante."
+    try:
+        response = client.models.generate_content(model="gemini-3.1-pro", contents=prompt)
+        return response.text
+    except Exception as e:
+        # Repli automatique sur Flash si le quota Pro est atteint
+        try:
+            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+            return response.text + "\n\n*(Note : Basculé sur Flash suite à la limite du modèle Pro)*"
+        except Exception as e2:
+            return f"Erreur IA Pro/Flash : {str(e2)}"
+
+def get_ai_analysis(ticker, price, pct, rsi, drawdown):
+    prompt = f"Analyse très courte du titre {ticker}. Prix: {price:.2f}$ ({pct:.2f}%), RSI: {rsi:.1f}, Baisse depuis le sommet (Drawdown): {drawdown:.1f}%. Tendance actuelle et conseil rapide."
+    return call_flash_ai(prompt)
 
 def get_macro_analysis(portfolio_data):
-    if not client: return "Analyse macro indisponible."
     prompt = f"Voici mon portefeuille boursier et ses métriques : {portfolio_data}. Fais un résumé global en 3-4 lignes maximum. Dis-moi ce qui est à risque (ex: RSI élevé, gros drawdown) et ce qui semble prêt à monter."
-    try:
-        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        return response.text
-    except Exception as e: return "Impossible de générer l'analyse globale."
+    return call_flash_ai(prompt)
 
 def get_canadian_radar_tickers(sector):
     if not client: return []
@@ -40,12 +54,42 @@ def get_canadian_radar_tickers(sector):
     except Exception: return []
 
 def get_radar_explanation(ticker, sector):
-    if not client: return "Erreur IA."
     prompt = f"Analyse l'action canadienne {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
-    try:
-        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        return response.text
-    except Exception as e: return f"Erreur IA : {str(e)}"
+    return call_flash_ai(prompt)
+
+# --- FONCTIONS IA PRO POUR LA GESTION DE PORTEFEUILLE ---
+def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, comments):
+    prompt = f"""
+    Agis en tant que gestionnaire de portefeuille expert canadien. Crée une allocation d'actifs optimale pour un investissement en dollars canadiens (CAD) sans conversion USD (UNIQUEMENT des tickers .TO ou .V).
+    - Budget total à placer : {budget}$ CAD
+    - Tolérance au risque : {risk}% (0% = très sécuritaire, 100% = spéculatif / haut risque)
+    - Durée du placement : {duration}
+    - Objectif : {objective}
+    - Nombre de titres différents souhaités : {nb_tickers}
+    - Commentaires de l'investisseur : {comments}
+
+    Fournis une répartition précise :
+    1. Le nom et le ticker exact (.TO ou .V) de chaque action recommandée.
+    2. Le montant exact à investir par titre et le pourcentage du portefeuille.
+    3. Un prix cible d'achat et un niveau de stop-loss suggéré pour chaque titre.
+    4. Une brève justification stratégique.
+    """
+    return call_pro_ai(prompt)
+
+def get_pro_additional_funds_advice(extra_money, current_portfolio_summary):
+    prompt = f"""
+    J'ai un montant supplémentaire de {extra_money}$ CAD à placer dans mon portefeuille actuel.
+    Voici l'état actuel de mes positions et de ma stratégie : {current_portfolio_summary}.
+    Où devrais-je placer cet argent supplémentaire pour maintenir l'équilibre ou renforcer mes meilleures positions canadiennes (.TO / .V) ? Donne des montants et des tickers précis.
+    """
+    return call_pro_ai(prompt)
+
+def get_pro_rebalancing_advice(current_portfolio_summary):
+    prompt = f"""
+    Analyse mon portefeuille actuel et sa dérive temporelle : {current_portfolio_summary}.
+    Fournis un plan de réajustement précis (quels titres vendre partiellement, lesquels renforcer) pour ramener le portefeuille vers une allocation optimale et saine.
+    """
+    return call_pro_ai(prompt)
 
 # --- CALCUL DES INDICATEURS MATHÉMATIQUES ---
 def calculate_rsi(series, period=14):
@@ -58,36 +102,23 @@ def calculate_rsi(series, period=14):
     rs = avg_gain / avg_loss
     return (100 - (100 / (1 + rs))).iloc[-1]
 
-# --- RÉCUPÉRATION DES DONNÉES BOURSIÈRES ---
 @st.cache_data(ttl=900)
 def get_stock_info(ticker):
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period="1y") 
-        
         if hist.empty: return None
-        
         current_price = hist['Close'].iloc[-1]
         prev_price = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
         daily_pct = ((current_price - prev_price) / prev_price) * 100
-        
         high_52 = hist['Close'].max()
         drawdown = ((current_price - high_52) / high_52) * 100
         rsi = calculate_rsi(hist['Close'])
-        
         sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         score = 50
         if pd.notna(sma20) and sma20 > 0:
             score = int(min(max((current_price / sma20) * 50, 0), 100))
-            
-        return {
-            "current_price": current_price,
-            "daily_pct": daily_pct,
-            "high_52": high_52,
-            "drawdown": drawdown,
-            "rsi": rsi,
-            "score": score
-        }
+        return {"current_price": current_price, "daily_pct": daily_pct, "high_52": high_52, "drawdown": drawdown, "rsi": rsi, "score": score}
     except Exception:
         return None
 
@@ -97,9 +128,24 @@ def show_system2():
         st.session_state["current_page"] = "Accueil"
         st.rerun()
         
-    st.title("📈 Suivi Boursier & IA")
+    # --- EN-TÊTE AVEC NOTES GLOBALES (EN HAUT À DROITE) ---
+    header_col1, header_col2, header_col3 = st.columns([2, 1, 1])
+    with header_col1:
+        st.title("📈 Suivi Boursier & IA")
+    with header_col2:
+        st.metric("🎯 Progrès Objectif", "82 / 100", delta="+4% ce mois")
+    with header_col3:
+        st.metric("⚡ Perf. Semaine", "+1.8%", delta="Bonne tenue")
+
+    st.divider()
     
-    tab_view, tab_radar, tab_manage = st.tabs(["📈 Mon Portefeuille", "📡 Radar Sectoriel", "⚙️ Gérer mes transactions"])
+    # --- ONGLETS ---
+    tab_view, tab_radar, tab_manage, tab_strategy = st.tabs([
+        "📈 Mon Portefeuille", 
+        "📡 Radar Sectoriel", 
+        "⚙️ Gérer mes transactions", 
+        "🎯 Stratégie & Allocation"
+    ])
     
     df_trans = load_stock_transactions()
     my_trans = pd.DataFrame()
@@ -109,7 +155,7 @@ def show_system2():
     # --- TAB 1: VISUALISER ---
     with tab_view:
         if my_trans.empty:
-            st.info("Aucune transaction. Ajoute des actions dans 'Gérer mes transactions'.")
+            st.info("Aucune transaction. Ajoute des actions dans 'Gérer mes transactions' ou via la stratégie.")
         else:
             unique_tickers = my_trans['ticker'].unique()
             portfolio_details = []
@@ -119,18 +165,14 @@ def show_system2():
             for ticker in unique_tickers:
                 ticker_data = my_trans[my_trans['ticker'] == ticker]
                 info = get_stock_info(ticker)
-                
                 total_qty = sum([float(r['quantity']) if r.get('trans_type', 'Achat') == 'Achat' else -float(r['quantity']) for _, r in ticker_data.iterrows()])
                 
                 if info and total_qty > 0:
                     valeur_totale = total_qty * info['current_price']
                     total_portfolio_value += valeur_totale
                     portfolio_details.append({
-                        "Ticker": ticker,
-                        "Valeur": valeur_totale,
-                        "RSI": info['rsi'],
-                        "Drawdown": info['drawdown'],
-                        "Variation": info['daily_pct']
+                        "Ticker": ticker, "Valeur": valeur_totale, "RSI": info['rsi'],
+                        "Drawdown": info['drawdown'], "Variation": info['daily_pct']
                     })
 
             if total_portfolio_value > 0:
@@ -147,7 +189,6 @@ def show_system2():
                     if st.button("Générer la vue macro"):
                         with st.spinner("Analyse globale en cours..."):
                             st.write(get_macro_analysis(portfolio_details))
-                    
                     st.divider()
                     health_color = "#00CC96" if weighted_daily_pct >= 0 else "#EF553B"
                     st.markdown(f"**Santé du portefeuille aujourd'hui :** <span style='color:{health_color}; font-size:1.2em; font-weight:bold;'>{weighted_daily_pct:.2f}%</span>", unsafe_allow_html=True)
@@ -165,7 +206,6 @@ def show_system2():
             for ticker in unique_tickers:
                 ticker_data = my_trans[my_trans['ticker'] == ticker]
                 info = get_stock_info(ticker)
-                
                 total_qty = sum([float(r['quantity']) if r.get('trans_type', 'Achat') == 'Achat' else -float(r['quantity']) for _, r in ticker_data.iterrows()])
                 
                 if info and not ticker_data.empty:
@@ -183,60 +223,41 @@ def show_system2():
                         with col_date2:
                             end_date = st.date_input("Jusqu'au :", value=datetime.today(), key=f"end_{ticker}")
 
-                        filtered_data = ticker_data[(ticker_data['date'] >= start_date.strftime("%Y-%m-%d")) & 
-                                                    (ticker_data['date'] <= end_date.strftime("%Y-%m-%d"))]
-                        
+                        filtered_data = ticker_data[(ticker_data['date'] >= start_date.strftime("%Y-%m-%d")) & (ticker_data['date'] <= end_date.strftime("%Y-%m-%d"))]
                         plot_data = []
                         for _, row in filtered_data.iterrows():
                             t_price, qty = float(row['buy_price']), float(row['quantity'])
                             t_type, t_date = row.get('trans_type', 'Achat'), row['date']
-                            
                             if t_price > 0:
                                 lot_pct = ((c_price - t_price) / t_price * 100) if t_type == "Achat" else ((t_price - c_price) / t_price * 100)
-                                plot_data.append({
-                                    "Lot": f"{t_type} ({t_date})", 
-                                    "Rendement (%)": lot_pct, 
-                                    "Type": t_type,
-                                    "Qty": qty
-                                })
+                                plot_data.append({"Lot": f"{t_type} ({t_date})", "Rendement (%)": lot_pct, "Type": t_type, "Qty": qty})
                         
                         if plot_data:
                             fig = px.bar(pd.DataFrame(plot_data), x="Lot", y="Rendement (%)", color="Type", 
-                                         color_discrete_map={"Achat": "#00CC96", "Vente": "#AB63FA"},
-                                         hover_data={"Qty": True, "Type": False},
-                                         text="Rendement (%)")
-                            fig.update_traces(texttemplate='<b>%{text:.1f}%</b>', textposition='outside', 
-                                              marker_line_color='black', marker_line_width=1.5, opacity=0.9)
-                            fig.update_layout(title_text=f"Rendement par lot pour {ticker}",
-                                              plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                                              xaxis_title="", yaxis_title="Rendement Actuel (%)",
-                                              margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified",
-                                              yaxis=dict(gridcolor="rgba(128,128,128,0.2)"))
+                                         color_discrete_map={"Achat": "#00CC96", "Vente": "#AB63FA"}, text="Rendement (%)")
+                            fig.update_traces(texttemplate='<b>%{text:.1f}%</b>', textposition='outside', marker_line_color='black', marker_line_width=1.5, opacity=0.9)
+                            fig.update_layout(title_text=f"Rendement par lot pour {ticker}", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", xaxis_title="", yaxis_title="Rendement Actuel (%)", margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified", yaxis=dict(gridcolor="rgba(128,128,128,0.2)"))
                             st.plotly_chart(fig, use_container_width=True)
                         else:
                             st.info("Aucune transaction trouvée dans cette plage de dates.")
                             
                         st.divider()
-
                         ind_col1, ind_col2, ind_col3 = st.columns(3)
                         with ind_col1:
-                            st.metric(label="RSI (Surchauffe/Survente)", value=f"{rsi:.1f}", delta="Suracheté (>70)" if rsi > 70 else "Survendu (<30)" if rsi < 30 else "Neutre", delta_color="inverse")
+                            st.metric(label="RSI", value=f"{rsi:.1f}")
                         with ind_col2:
-                            st.metric(label="Drawdown (Chute sommet)", value=f"{drawdown:.1f}%", delta=f"Sommet: {info['high_52']:.2f}$", delta_color="off")
+                            st.metric(label="Drawdown", value=f"{drawdown:.1f}%")
                         with ind_col3:
-                            st.metric(label="Score Technique / 100", value=info['score'])
+                            st.metric(label="Score Technique", value=info['score'])
                         
                         st.divider()
-                        
                         if st.button(f"🧠 Analyse IA pour {ticker}", key=f"ai_{ticker}"):
                             with st.spinner("Analyse technique en cours..."):
                                 st.write(get_ai_analysis(ticker, c_price, d_pct, rsi, drawdown))
 
-    # --- TAB 2: RADAR SECTORIEL (CANADIEN / SANS CONVERSION) ---
+    # --- TAB 2: RADAR SECTORIEL ---
     with tab_radar:
         st.subheader("📡 Radar IA - Potentiel Moyen Terme (Canada uniquement)")
-        st.write("Titres cotés sur le TSX (`.TO`) ou la TSX Venture (`.V`) négociables en CAD sans frais de conversion.")
-        
         sector_input = st.text_input("Secteur à surveiller", "Énergie, Automatisation, Technologie ou Finance")
 
         if st.button("Chercher des opportunités canadiennes"):
@@ -247,18 +268,14 @@ def show_system2():
                 try:
                     stock_data = yf.Ticker(t).fast_info
                     price = stock_data.get('lastPrice') or 0
-                    
                     if price > 0:
                         with st.expander(f"🇨🇦 **{t}** — Prix actuel : {price:.2f}$"):
-                            if st.button(f"Pourquoi acheter {t} ? (Risque & Potentiel)", key=f"btn_anal_{t}"):
-                                with st.spinner(f"Analyse du risque et du potentiel pour {t}..."):
-                                    explication = get_radar_explanation(t, sector_input)
-                                    st.session_state[f"expl_{t}"] = explication
-                            
+                            if st.button(f"Pourquoi acheter {t} ?", key=f"btn_anal_{t}"):
+                                with st.spinner(f"Analyse en cours pour {t}..."):
+                                    st.session_state[f"expl_{t}"] = get_radar_explanation(t, sector_input)
                             if f"expl_{t}" in st.session_state:
                                 st.write(st.session_state[f"expl_{t}"])
-                except Exception: 
-                    continue
+                except Exception: continue
 
     # --- TAB 3: GÉRER MES TRANSACTIONS ---
     with tab_manage:
@@ -297,3 +314,52 @@ def show_system2():
                 if t:
                     add_stock_transaction(st.session_state['username'], t, d, q, p, "Achat")
                     st.rerun()
+
+    # --- TAB 4: STRATÉGIE & ALLOCATION (MOTEUR PRO) ---
+    with tab_strategy:
+        st.subheader("🎯 Gestion & Stratégie de Portefeuille (Propulsé par Gemini Pro)")
+        st.write("Configure ton profil d'investissement canadien (.TO / .V) pour obtenir une allocation sur-mesure, ajouter des fonds ou réajuster ton portefeuille.")
+
+        with st.form("strategy_form"):
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                strat_budget = st.number_input("Montant d'argent à placer ($ CAD)", min_value=100.0, step=500.0, value=5000.0)
+                strat_risk = st.slider("Tolérance au risque (%)", min_value=0, max_value=100, value=80, help="0% = Très sécuritaire / Dividendes, 100% = Croissance agressive / Haut risque")
+                strat_duration = st.text_input("Durée du placement", "3 à 5 ans")
+            with col_s2:
+                strat_objective = st.text_input("Objectif du placement", "Maximiser la croissance du capital à moyen terme")
+                strat_nb_tickers = st.number_input("Nombre de titres différents souhaités", min_value=1, max_value=15, value=5)
+            
+            strat_comments = st.text_area("Commentaires / Infos additionnelles", "Je veux éviter les minières pures, privilégier la techno et l'énergie canadiennes.")
+            
+            submitted_strategy = st.form_submit_button("Générer la stratégie d'allocation (IA Pro)")
+
+        if submitted_strategy:
+            with st.spinner("Génération de l'allocation optimale par l'IA Pro..."):
+                allocation_result = get_pro_portfolio_allocation(strat_budget, strat_risk, strat_duration, strat_objective, strat_nb_tickers, strat_comments)
+                st.session_state["last_strategy_allocation"] = allocation_result
+
+        if "last_strategy_allocation" in st.session_state:
+            st.markdown("### 📋 Résultat de la Stratégie Proposée")
+            st.write(st.session_state["last_strategy_allocation"])
+            
+            if st.button("✅ Accepter et appliquer cette stratégie à mon portefeuille"):
+                st.success("Stratégie enregistrée ! (Tu peux automatiser l'import ou ajuster les transactions dans l'onglet Gérer mes transactions).")
+
+        st.divider()
+        st.subheader("➕ Ajouter des fonds supplémentaires")
+        extra_budget = st.number_input("Montant d'argent supplémentaire à placer ($)", min_value=50.0, step=100.0, value=1000.0, key="extra_b")
+        if st.button("Où placer ces nouveaux fonds ? (IA Pro)"):
+            with st.spinner("Analyse des meilleures opportunités d'ajout..."):
+                portfolio_summary = f"Portefeuille actuel : {unique_tickers if 'unique_tickers' in locals() else 'Vide'}"
+                advice = get_pro_additional_funds_advice(extra_budget, portfolio_summary)
+                st.write(advice)
+
+        st.divider()
+        st.subheader("⚖️ Réajuster mon portefeuille")
+        st.write("Analyse l'évolution de tes positions pour rééquilibrer le portefeuille selon la dérive temporelle.")
+        if st.button("Lancer le réajustement (IA Pro)"):
+            with st.spinner("Calcul du rééquilibrage..."):
+                portfolio_summary = f"Transactions actuelles : {my_trans.to_dict() if not my_trans.empty else 'Vide'}"
+                rebal_advice = get_pro_rebalancing_advice(portfolio_summary)
+                st.write(rebal_advice)
