@@ -30,18 +30,18 @@ def get_macro_analysis(portfolio_data):
         return response.text
     except Exception as e: return "Impossible de générer l'analyse globale."
 
-def get_radar_tickers(sector):
+def get_canadian_radar_tickers(sector):
     if not client: return []
-    prompt = f"Donne-moi 10 symboles boursiers accessibles à un investisseur canadien (bourses TSX avec '.TO', TSXV avec '.V', ou grandes bourses US NASDAQ/NYSE) dans le secteur '{sector}'. Je cherche des entreprises avec un excellent potentiel de croissance à moyen terme, pas uniquement les plus grosses capitalisations boursières. Réponds UNIQUEMENT par une liste de tickers séparés par des virgules."
+    prompt = f"Donne-moi 10 actions canadiennes du secteur '{sector}'. UTILISE UNIQUEMENT DES TICKERS FINISSANT PAR .TO OU .V. Cherche des entreprises avec un bon potentiel à moyen terme. Réponds par une liste simple de symboles séparés par des virgules."
     try:
         response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        tickers = re.findall(r'\b[A-Z\.-]{2,10}\b', response.text)
+        tickers = re.findall(r'\b[A-Z0-9-]+\.(?:TO|V)\b', response.text)
         return list(set(tickers))
     except Exception: return []
 
 def get_radar_explanation(ticker, sector):
     if not client: return "Erreur IA."
-    prompt = f"Analyse l'action {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
+    prompt = f"Analyse l'action canadienne {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
     try:
         response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         return response.text
@@ -177,7 +177,6 @@ def show_system2():
                     st.markdown(f"Prix: **{c_price:.2f}$** <span style='color:{color}; font-weight:bold;'>({d_pct:.2f}%)</span>", unsafe_allow_html=True)
                     
                     with st.expander(f"📊 Graphiques & Indicateurs pour {ticker}"):
-                        # --- GRAPHIQUE DE PERFORMANCE EMBELLI ---
                         col_date1, col_date2 = st.columns(2)
                         with col_date1:
                             start_date = st.date_input("Depuis le :", value=datetime.today() - timedelta(days=365), key=f"start_{ticker}")
@@ -233,33 +232,33 @@ def show_system2():
                             with st.spinner("Analyse technique en cours..."):
                                 st.write(get_ai_analysis(ticker, c_price, d_pct, rsi, drawdown))
 
-    # --- TAB 2: RADAR SECTORIEL ---
+    # --- TAB 2: RADAR SECTORIEL (CANADIEN / SANS CONVERSION) ---
     with tab_radar:
-        st.subheader("📡 Radar IA (Potentiel Moyen Terme)")
-        sector_input = st.text_input("Secteur à surveiller", "Automatisation, Intelligence Artificielle et Robotique")
-        min_volume = st.select_slider("Filtre Volume", options=[10000, 50000, 250000, 1000000], value=50000)
+        st.subheader("📡 Radar IA - Potentiel Moyen Terme (Canada uniquement)")
+        st.write("Titres cotés sur le TSX (`.TO`) ou la TSX Venture (`.V`) négociables en CAD sans frais de conversion.")
+        
+        sector_input = st.text_input("Secteur à surveiller", "Énergie, Automatisation, Technologie ou Finance")
 
-        if st.button("Chercher des opportunités"):
-            with st.spinner("L'IA scanne le marché..."):
-                st.session_state["radar_tickers"] = get_radar_tickers(sector_input)
+        if st.button("Chercher des opportunités canadiennes"):
+            st.session_state["radar_tickers"] = get_canadian_radar_tickers(sector_input)
 
         if "radar_tickers" in st.session_state and st.session_state["radar_tickers"]:
             for t in st.session_state["radar_tickers"]:
                 try:
                     stock_data = yf.Ticker(t).fast_info
-                    vol = stock_data.get('lastVolume') or 0
                     price = stock_data.get('lastPrice') or 0
                     
-                    if vol >= min_volume and price > 0:
-                        with st.expander(f"🎯 **{t}** — Prix: {price:.2f}$ | Vol: {int(vol):,}"):
-                            if st.button(f"Analyser le potentiel de {t}", key=f"btn_anal_{t}"):
-                                with st.spinner(f"Analyse en cours pour {t}..."):
+                    if price > 0:
+                        with st.expander(f"🇨🇦 **{t}** — Prix actuel : {price:.2f}$"):
+                            if st.button(f"Pourquoi acheter {t} ? (Risque & Potentiel)", key=f"btn_anal_{t}"):
+                                with st.spinner(f"Analyse du risque et du potentiel pour {t}..."):
                                     explication = get_radar_explanation(t, sector_input)
                                     st.session_state[f"expl_{t}"] = explication
                             
                             if f"expl_{t}" in st.session_state:
                                 st.write(st.session_state[f"expl_{t}"])
-                except: continue
+                except Exception: 
+                    continue
 
     # --- TAB 3: GÉRER MES TRANSACTIONS ---
     with tab_manage:
@@ -290,7 +289,7 @@ def show_system2():
         st.divider()
         st.subheader("Ajouter un TOUT NOUVEAU titre")
         with st.form("new_stock"):
-            t = st.text_input("Symbole (ex: AAPL, SHOP.TO)").upper()
+            t = st.text_input("Symbole (ex: RY.TO, CSU.TO, CGNT.V)").upper()
             d = st.date_input("Date")
             q = st.number_input("Qté", min_value=0.01, step=1.0)
             p = st.number_input("Prix d'achat ($)", min_value=0.01, step=0.1)
