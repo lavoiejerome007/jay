@@ -98,7 +98,6 @@ def file_to_base64(uploaded_file):
             image = Image.open(uploaded_file)
             if image.mode in ("RGBA", "P"):
                 image = image.convert("RGB")
-            # Rotation
             image = image.rotate(-90, expand=True)
             image.thumbnail((500, 500))
             buffered = io.BytesIO()
@@ -151,7 +150,6 @@ def load_fit_items():
             if col not in df.columns:
                 df[col] = ""
                 
-        # Insensibilité à la casse pour les collections
         df['collection'] = df['collection'].fillna("").apply(lambda x: str(x).strip().capitalize())
         return df
     except Exception:
@@ -159,7 +157,7 @@ def load_fit_items():
 
 def load_fit_ratings():
     client = get_gsheet_client()
-    default_cols = ['combo_id', 'rater', 'rating', 'notes'] # Ajout de la colonne "rater"
+    default_cols = ['combo_id', 'rater', 'rating', 'notes']
     if not client:
         return pd.DataFrame(columns=default_cols)
     try:
@@ -169,7 +167,6 @@ def load_fit_ratings():
             return pd.DataFrame(columns=default_cols)
             
         headers = rows[0]
-        # Migration auto si 'rater' manque
         if 'rater' not in headers:
             try:
                 sheet.update_cell(1, len(headers)+1, 'rater')
@@ -360,7 +357,21 @@ else:
         with tab_add:
             st.subheader("Ajouter une pièce de linge")
             item_type = st.selectbox("Type de vêtement", ["Chandail (Haut)", "Pantalon (Bas)"])
-            item_col = st.text_input("Nom de la collection (Optionnel)")
+            
+            # Récupérer les collections existantes de l'utilisateur pour alimenter le menu déroulant
+            existing_cols = []
+            if not items_df.empty:
+                user_items_for_cols = items_df[items_df['owner'] == st.session_state['username']]
+                existing_cols = sorted([c for c in user_items_for_cols['collection'].unique() if c.strip() != ""])
+            
+            col_choice_options = ["-- Aucune / Nouvelle collection --"] + existing_cols
+            selected_col_option = st.selectbox("Sélectionner une collection existante", col_choice_options)
+            
+            if selected_col_option == "-- Aucune / Nouvelle collection --":
+                item_col = st.text_input("Ou nom de la nouvelle collection")
+            else:
+                item_col = selected_col_option
+                
             recipient = st.text_input("Partager avec (nom d'utilisateur, séparé par des virgules) :")
             item_file = st.file_uploader("📸 Image", type=["png", "jpg", "jpeg"], key="item_up")
             
@@ -369,7 +380,6 @@ else:
                     with st.spinner("Traitement..."):
                         img_b64 = file_to_base64(item_file)
                         type_val = "shirt" if "Chandail" in item_type else "pants"
-                        # Normalisation appliquée avant la sauvegarde
                         col_normalized = item_col.strip().capitalize() if item_col else ""
                         new_id = int(datetime.now().timestamp())
                         
@@ -393,11 +403,11 @@ else:
                         with col2:
                             st.write(f"**Type:** {'Chandail' if row['type'] == 'shirt' else 'Pantalon'}")
                             new_col = st.text_input("Collection", value=row.get('collection', ''), key=f"upd_col_{row['id']}")
-                            new_recip = st.text_input("Partagé avec", value=row.get('recipient', ''), key=f"upd_recip_{row['id']}")
+                            new_recipient = st.text_input("Partagé avec", value=row.get('recipient', ''), key=f"upd_recip_{row['id']}")
                             colA, colB = st.columns(2)
                             with colA:
                                 if st.button("💾 Mettre à jour", key=f"btn_upd_{row['id']}"):
-                                    update_fit_item(row['id'], new_recip.strip(), new_col.strip().capitalize())
+                                    update_fit_item(row['id'], new_recipient.strip(), new_col.strip().capitalize())
                                     st.rerun()
                             with colB:
                                 if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
@@ -435,22 +445,40 @@ else:
                                 st.rerun()
                     st.divider()
 
-        # --- TAB VISUALISER (MES FITS SEULEMENT) ---
+        # --- TAB VISUALISER (MES FITS SEULEMENT & TAGS INTERACTIFS) ---
         with tab_view:
             st.subheader("Mes combinaisons")
             if not items_df.empty:
                 my_items = items_df[items_df['owner'] == st.session_state['username']]
-                unique_collections = [c for c in my_items['collection'].unique() if c.strip() != ""]
+                unique_collections = sorted([c for c in my_items['collection'].unique() if c.strip() != ""])
                 
-                # Tags de collections en haut
-                if unique_collections:
-                    st.markdown("**Tags de vos collections :** " + " | ".join([f"`🏷️ {c}`" for c in unique_collections]))
-                    st.write("")
+                # État de filtre par tag cliquable
+                if "selected_tag_filter" not in st.session_state:
+                    st.session_state["selected_tag_filter"] = "Tous"
+                
+                # Tags interactifs en haut
+                st.markdown("**Filtrer par collection :**")
+                cols_tag = st.columns(len(unique_collections) + 1)
+                with cols_tag[0]:
+                    if st.button("🌟 Tous", use_container_width=True):
+                        st.session_state["selected_tag_filter"] = "Tous"
+                for idx, c_tag in enumerate(unique_collections):
+                    with cols_tag[idx + 1]:
+                        if st.button(f"🏷️ {c_tag}", use_container_width=True, key=f"tag_btn_{c_tag}"):
+                            st.session_state["selected_tag_filter"] = c_tag
+                
+                st.write("")
                 
                 all_my_cols = my_items['collection'].unique()
                 
                 for col_name in all_my_cols:
                     display_name = col_name if str(col_name).strip() != "" else "Général (Sans collection)"
+                    
+                    # Si un filtre de tag est actif, on n'affiche que la collection sélectionnée
+                    current_filter = st.session_state["selected_tag_filter"]
+                    if current_filter != "Tous" and display_name != current_filter:
+                        continue
+                        
                     col_items = my_items[my_items['collection'] == col_name]
                     
                     shirts = col_items[col_items['type'] == 'shirt'].to_dict('records')
@@ -462,7 +490,6 @@ else:
                             for p in pants:
                                 combo_id = f"S{s['id']}_P{p['id']}"
                                 
-                                # Calcul de la note moyenne des amis
                                 if not ratings_df.empty:
                                     combo_ratings = ratings_df[ratings_df['combo_id'] == combo_id]
                                 else:
@@ -475,31 +502,29 @@ else:
                                     rating_txt = "⭐ Note : **Aucune note reçue**"
 
                                 with st.container(border=True):
-                                    colA, colB = st.columns(2)
-                                    with colA:
-                                        if s['image_url']: st.image(s['image_url'], width=300)
-                                    with colB:
-                                        if p['image_url']: st.image(p['image_url'], width=300)
+                                    # Affichage vertical : 1 image au-dessus de l'autre
+                                    if s['image_url']: 
+                                        st.image(s['image_url'], width=350)
+                                    if p['image_url']: 
+                                        st.image(p['image_url'], width=350)
                                         
                                     st.markdown(rating_txt)
                                     
-                                    # Afficher les commentaires laissés par les amis
                                     if not combo_ratings.empty:
                                         for _, r in combo_ratings.iterrows():
                                             if str(r['notes']).strip():
                                                 st.caption(f"💬 `{r['rater']}` : *{r['notes']}*")
                         st.write("")
 
-        # --- TAB NOTER (ARCHIVE / PARTAGÉ AVEC MOI) ---
+        # --- TAB NOTER (ARCHIVE / PARTAGÉ AVEC MOI OU MOI-MÊME) ---
         with tab_rate:
             st.subheader("🗄️ Archive des partages (Noter)")
-            st.write("Ici apparaissent les combinaisons des vêtements qui t'ont été partagés. Les combinaisons ne se font qu'entre les pièces appartenant à une même personne.")
+            st.write("Ici apparaissent les combinaisons des vêtements qui t'ont été partagés (ou partagés à toi-même).")
             
             if not items_df.empty:
-                # Filtrer : Linge où je suis dans le recipient ET dont je ne suis PAS le propriétaire
+                # Filtrer : Linge où je suis dans le recipient (incluant si je me le suis partagé à moi-même)
                 shared_with_me = items_df[
-                    (items_df['recipient'].str.contains(st.session_state['username'], na=False)) & 
-                    (items_df['owner'] != st.session_state['username'])
+                    items_df['recipient'].str.contains(st.session_state['username'], na=False)
                 ]
                 
                 if shared_with_me.empty:
@@ -515,14 +540,12 @@ else:
                         pants = owner_items[owner_items['type'] == 'pants'].to_dict('records')
                         
                         if not shirts or not pants:
-                            st.warning(f"{owner} a partagé des pièces, mais il manque un haut ou un bas pour former une combinaison complète.")
                             continue
                             
                         for s in shirts:
                             for p in pants:
                                 combo_id = f"S{s['id']}_P{p['id']}"
                                 
-                                # Vérifier ma note existante
                                 if not ratings_df.empty:
                                     my_rate_row = ratings_df[(ratings_df['combo_id'] == combo_id) & (ratings_df['rater'] == st.session_state['username'])]
                                 else:
@@ -535,11 +558,9 @@ else:
                                     current_rate, current_note = 0, ""
 
                                 with st.expander(f"Combinaison de {owner}"):
-                                    colA, colB = st.columns(2)
-                                    with colA:
-                                        if s['image_url']: st.image(s['image_url'], width=250)
-                                    with colB:
-                                        if p['image_url']: st.image(p['image_url'], width=250)
+                                    # Affichage vertical pour les notes également
+                                    if s['image_url']: st.image(s['image_url'], width=300)
+                                    if p['image_url']: st.image(p['image_url'], width=300)
                                         
                                     new_rating = st.number_input("Ma note /100", min_value=0, max_value=100, value=current_rate, key=f"rate_{combo_id}")
                                     new_note = st.text_input("Mon commentaire", value=current_note, key=f"note_{combo_id}")
