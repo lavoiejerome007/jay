@@ -28,7 +28,7 @@ def call_pro_ai(prompt):
     try:
         # Utilisation de config avec temperature=0.0 pour figer la logique et éviter les variations aléatoires
         config = {"temperature": 0.0}
-        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt, config=config)
+        response = client.models.generate_content(model="gemini-3.1-pro", contents=prompt, config=config)
         return response.text
     except Exception as e:
         try:
