@@ -20,7 +20,7 @@ def get_ai_analysis(ticker, price, pct):
     prompt = f"Fais une analyse très courte et directe du titre {ticker}. Le prix actuel est de {price:.2f}$ avec une variation de {pct:.2f}% aujourd'hui. Donne-moi ton avis sur la tendance actuelle et un conseil rapide pour un investisseur."
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash", 
+            model="gemini-2.0-flash", 
             contents=prompt
         )
         return response.text
