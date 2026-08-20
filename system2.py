@@ -18,7 +18,7 @@ def get_ai_analysis(ticker, price, pct, rsi, drawdown):
     if not client: return "Erreur : Clé API Gemini manquante."
     prompt = f"Analyse très courte du titre {ticker}. Prix: {price:.2f}$ ({pct:.2f}%), RSI: {rsi:.1f}, Baisse depuis le sommet (Drawdown): {drawdown:.1f}%. Tendance actuelle et conseil rapide."
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         return response.text
     except Exception as e: return f"Erreur IA : {str(e)}"
 
@@ -26,7 +26,7 @@ def get_macro_analysis(portfolio_data):
     if not client: return "Analyse macro indisponible."
     prompt = f"Voici mon portefeuille boursier et ses métriques : {portfolio_data}. Fais un résumé global en 3-4 lignes maximum. Dis-moi ce qui est à risque (ex: RSI élevé, gros drawdown) et ce qui semble prêt à monter."
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
+        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         return response.text
     except Exception as e: return "Impossible de générer l'analyse globale."
 
@@ -34,8 +34,7 @@ def get_radar_tickers(sector):
     if not client: return []
     prompt = f"Donne-moi 10 symboles boursiers (tickers Yahoo Finance, ex: MSFT, NVDA, TSLA) correspondants au secteur '{sector}'. Réponds UNIQUEMENT par une liste de tickers séparés par des virgules, rien d'autre."
     try:
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        # Extraction intelligente des tickers avec regex
+        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         tickers = re.findall(r'\b[A-Z\.-]{2,10}\b', response.text)
         return list(set(tickers))
     except Exception: return []
@@ -56,7 +55,7 @@ def calculate_rsi(series, period=14):
 def get_stock_info(ticker):
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="1y") # Données sur 1 an pour le Drawdown et RSI
+        hist = stock.history(period="1y") 
         
         if hist.empty: return None
         
@@ -64,12 +63,10 @@ def get_stock_info(ticker):
         prev_price = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
         daily_pct = ((current_price - prev_price) / prev_price) * 100
         
-        # Indicateurs Techniques
         high_52 = hist['Close'].max()
         drawdown = ((current_price - high_52) / high_52) * 100
         rsi = calculate_rsi(hist['Close'])
         
-        # Score Technique (0-100)
         sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
         score = 50
         if pd.notna(sma20) and sma20 > 0:
@@ -94,7 +91,6 @@ def show_system2():
         
     st.title("📈 Suivi Boursier & IA")
     
-    # Ajout du nouvel onglet Radar
     tab_view, tab_radar, tab_manage = st.tabs(["📈 Mon Portefeuille", "📡 Radar Sectoriel", "⚙️ Gérer mes transactions"])
     
     df_trans = load_stock_transactions()
@@ -107,7 +103,6 @@ def show_system2():
         if my_trans.empty:
             st.info("Aucune transaction. Ajoute des actions dans 'Gérer mes transactions'.")
         else:
-            # 1. PRÉPARATION DE LA VUE MACRO
             unique_tickers = my_trans['ticker'].unique()
             portfolio_details = []
             total_portfolio_value = 0
@@ -130,7 +125,6 @@ def show_system2():
                         "Variation": info['daily_pct']
                     })
 
-            # Calcul de la santé globale (moyenne pondérée du jour)
             if total_portfolio_value > 0:
                 for item in portfolio_details:
                     poids = item["Valeur"] / total_portfolio_value
@@ -160,7 +154,6 @@ def show_system2():
             st.divider()
             st.subheader("Analyse détaillée par titre")
             
-            # 2. AFFICHAGE DE CHAQUE ACTION
             for ticker in unique_tickers:
                 ticker_data = my_trans[my_trans['ticker'] == ticker]
                 info = get_stock_info(ticker)
@@ -176,24 +169,53 @@ def show_system2():
                     st.markdown(f"Prix: **{c_price:.2f}$** <span style='color:{color}'>({d_pct:.2f}%)</span>", unsafe_allow_html=True)
                     
                     with st.expander(f"📊 Graphiques & Indicateurs pour {ticker}"):
-                        ind_col1, ind_col2, ind_col3 = st.columns(3)
+                        # --- GRAPHIQUE DE PERFORMANCE (Réintégré) ---
+                        col_date1, col_date2 = st.columns(2)
+                        with col_date1:
+                            start_date = st.date_input("Depuis le :", value=datetime.today() - timedelta(days=365), key=f"start_{ticker}")
+                        with col_date2:
+                            end_date = st.date_input("Jusqu'au :", value=datetime.today(), key=f"end_{ticker}")
+
+                        filtered_data = ticker_data[(ticker_data['date'] >= start_date.strftime("%Y-%m-%d")) & 
+                                                    (ticker_data['date'] <= end_date.strftime("%Y-%m-%d"))]
                         
-                        # Jauge RSI
-                        with ind_col1:
-                            rsi_color = "red" if rsi > 70 else "green" if rsi < 30 else "orange"
-                            st.metric(label="RSI (Surchauffe/Survente)", value=f"{rsi:.1f}", delta="Suracheté (>70)" if rsi > 70 else "Survendu (<30)" if rsi < 30 else "Neutre", delta_color="inverse")
-                        
-                        # Drawdown
-                        with ind_col2:
-                            st.metric(label="Drawdown (Chute sommet 52s)", value=f"{drawdown:.1f}%", delta=f"Sommet: {info['high_52']:.2f}$", delta_color="off")
+                        plot_data = []
+                        for _, row in filtered_data.iterrows():
+                            t_price, qty = float(row['buy_price']), float(row['quantity'])
+                            t_type, t_date = row.get('trans_type', 'Achat'), row['date']
                             
-                        # Score Technique
+                            if t_price > 0:
+                                lot_pct = ((c_price - t_price) / t_price * 100) if t_type == "Achat" else ((t_price - c_price) / t_price * 100)
+                                plot_data.append({
+                                    "Lot": f"{t_type} ({t_date})", 
+                                    "Rendement (%)": lot_pct, 
+                                    "Type": t_type,
+                                    "Qty": qty
+                                })
+                        
+                        if plot_data:
+                            fig = px.bar(pd.DataFrame(plot_data), x="Lot", y="Rendement (%)", color="Type", 
+                                         color_discrete_map={"Achat": "#1f77b4", "Vente": "#ffbf00"},
+                                         title=f"Performance des transactions {ticker}", hover_data=["Qty"])
+                            fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("Aucune transaction trouvée dans cette plage de dates.")
+                            
+                        st.divider()
+
+                        # --- INDICATEURS TECHNIQUES ---
+                        ind_col1, ind_col2, ind_col3 = st.columns(3)
+                        with ind_col1:
+                            st.metric(label="RSI (Surchauffe/Survente)", value=f"{rsi:.1f}", delta="Suracheté (>70)" if rsi > 70 else "Survendu (<30)" if rsi < 30 else "Neutre", delta_color="inverse")
+                        with ind_col2:
+                            st.metric(label="Drawdown (Chute sommet)", value=f"{drawdown:.1f}%", delta=f"Sommet: {info['high_52']:.2f}$", delta_color="off")
                         with ind_col3:
                             st.metric(label="Score Technique / 100", value=info['score'])
                         
                         st.divider()
                         
-                        # Analyse IA spécifique
+                        # --- ANALYSE IA ---
                         if st.button(f"🧠 Analyse IA pour {ticker}", key=f"ai_{ticker}"):
                             with st.spinner("Analyse technique en cours..."):
                                 st.write(get_ai_analysis(ticker, c_price, d_pct, rsi, drawdown))
@@ -201,7 +223,7 @@ def show_system2():
     # --- TAB 2: RADAR SECTORIEL ---
     with tab_radar:
         st.subheader("📡 Radar IA (Détection d'opportunités)")
-        st.write("Demande à l'IA de trouver des actions dans un secteur précis, puis filtre par volume d'échange pour éviter les petites capitalisations trop risquées.")
+        st.write("Demande à l'IA de trouver des actions dans un secteur précis, puis filtre par volume d'échange.")
         
         col_r1, col_r2 = st.columns([2, 1])
         with col_r1:
@@ -221,7 +243,6 @@ def show_system2():
                     results = []
                     for t in tickers_trouves:
                         try:
-                            # Récupération rapide pour vérifier le volume
                             stock_data = yf.Ticker(t).fast_info
                             vol = stock_data.get('lastVolume') or 0
                             price = stock_data.get('lastPrice') or 0
