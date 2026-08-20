@@ -7,43 +7,51 @@ from database import load_stock_transactions, add_stock_transaction, delete_stoc
 
 @st.cache_data(ttl=900)
 def get_stock_info(ticker):
+    current_price = 0.0
+    daily_pct = 0.0
+    clean_news = []
+    earnings_date = "Date non disponible"
+    
+    # 1. Récupération sécurisée du prix
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d")
-        if len(hist) >= 2:
+        hist = stock.history(period="5d")
+        if not hist.empty:
             current_price = hist['Close'].iloc[-1]
-            prev_price = hist['Close'].iloc[-2]
-            daily_pct = ((current_price - prev_price) / prev_price) * 100
-        elif len(hist) == 1:
-            current_price = hist['Close'].iloc[0]
-            daily_pct = 0.0
+            if len(hist) >= 2:
+                prev_price = hist['Close'].iloc[-2]
+                daily_pct = ((current_price - prev_price) / prev_price) * 100
         else:
             return None
-            
+    except Exception:
+        return None
+
+    # 2. Récupération optionnelle des nouvelles (ne bloque plus le code si ça échoue)
+    try:
         raw_news = stock.news
-        clean_news = []
         if raw_news:
             for n in raw_news[:3]:
                 title = n.get('title') or n.get('content', {}).get('title') or "Titre indisponible"
                 link = n.get('link') or n.get('content', {}).get('clickThroughUrl', {}).get('url') or "#"
                 if title != "Titre indisponible":
                     clean_news.append({"title": title, "link": link})
-        
-        earnings_date = "Date non disponible"
-        try:
-            calendar = stock.get_earnings_dates(limit=1)
-            if calendar is not None and not calendar.empty:
-                earnings_date = calendar.index[0].strftime("%Y-%m-%d")
-        except: pass
-
-        return {
-            "current_price": current_price,
-            "daily_pct": daily_pct,
-            "news": clean_news,
-            "earnings_date": earnings_date
-        }
     except Exception:
-        return None
+        pass
+
+    # 3. Récupération optionnelle du prochain trimestre
+    try:
+        calendar = stock.get_earnings_dates(limit=1)
+        if calendar is not None and not calendar.empty:
+            earnings_date = calendar.index[0].strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    return {
+        "current_price": current_price,
+        "daily_pct": daily_pct,
+        "news": clean_news,
+        "earnings_date": earnings_date
+    }
 
 def show_system2():
     if st.button("← Retour au tableau de bord"):
@@ -90,14 +98,12 @@ def show_system2():
                     st.markdown(f"Prix actuel : **{c_price:.2f}$** <span style='color:{color}'>({arrow} {d_pct:.2f}%) aujourd'hui</span>", unsafe_allow_html=True)
                     
                     with st.expander(f"📊 Graphiques & Infos pour {ticker}"):
-                        # Filtres de date par titre
                         col_date1, col_date2 = st.columns(2)
                         with col_date1:
                             start_date = st.date_input("Depuis le :", value=datetime(2026, 1, 1), key=f"start_{ticker}")
                         with col_date2:
                             end_date = st.date_input("Jusqu'au :", value=datetime.today(), key=f"end_{ticker}")
 
-                        # Filtrage des données
                         filtered_data = ticker_data[(ticker_data['date'] >= start_date.strftime("%Y-%m-%d")) & 
                                                     (ticker_data['date'] <= end_date.strftime("%Y-%m-%d"))]
                         
@@ -106,8 +112,6 @@ def show_system2():
                             t_price, qty = float(row['buy_price']), float(row['quantity'])
                             t_type, t_date = row.get('trans_type', 'Achat'), row['date']
                             
-                            # Rendement : Positif pour achat si prix actuel > prix achat. 
-                            # Pour vente : On inverse la logique (coût d'opportunité)
                             lot_pct = ((c_price - t_price) / t_price * 100) if t_type == "Achat" else ((t_price - c_price) / t_price * 100)
                             
                             plot_data.append({
@@ -123,6 +127,8 @@ def show_system2():
                                          title=f"Performance des transactions {ticker}")
                             fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
                             st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("Aucune transaction dans cette plage de dates.")
                         
                         # Infos IA/Nouvelles
                         col1, col2, col3 = st.columns(3)
