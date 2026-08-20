@@ -20,12 +20,10 @@ def get_stock_info(ticker):
         else:
             return None
             
-        # --- CORRECTION DES NOUVELLES ---
         raw_news = stock.news
         clean_news = []
         if raw_news:
             for n in raw_news[:3]:
-                # On fouille dans la nouvelle structure de données de Yahoo Finance
                 title = n.get('title') or n.get('content', {}).get('title') or "Titre indisponible"
                 link = n.get('link') or n.get('content', {}).get('clickThroughUrl', {}).get('url') or "#"
                 if title != "Titre indisponible":
@@ -68,16 +66,10 @@ def show_system2():
         if my_trans.empty:
             st.info("Tu n'as aucune transaction. Va dans l'onglet 'Gérer mes transactions' pour en ajouter.")
         else:
-            # Filtre de date
-            filter_date = st.date_input("Afficher les données jusqu'au :", value=datetime.today())
-            str_filter_date = filter_date.strftime("%Y-%m-%d")
-            
             unique_tickers = my_trans['ticker'].unique()
             
             for ticker in unique_tickers:
-                # Appliquer le filtre de date
-                ticker_data = my_trans[(my_trans['ticker'] == ticker) & (my_trans['date'] <= str_filter_date)]
-                
+                ticker_data = my_trans[my_trans['ticker'] == ticker]
                 info = get_stock_info(ticker)
                 
                 if info and not ticker_data.empty:
@@ -86,13 +78,31 @@ def show_system2():
                     color = "green" if d_pct >= 0 else "red"
                     arrow = "▲" if d_pct >= 0 else "▼"
                     
+                    # L'affichage global du titre n'est plus affecté par les dates
                     st.markdown(f"### {ticker} : {c_price:.2f}$ <span style='color:{color}'>({arrow} {d_pct:.2f}%) aujourd'hui</span>", unsafe_allow_html=True)
                     
                     with st.expander(f"📊 Graphique de performance & IA pour {ticker}"):
                         st.markdown("#### Performance par lot")
                         
+                        # Filtres de date spécifiques à ce graphique
+                        col_date1, col_date2 = st.columns(2)
+                        with col_date1:
+                            try:
+                                default_start = pd.to_datetime(ticker_data['date']).min().date()
+                            except:
+                                default_start = datetime.today().date()
+                            start_date = st.date_input("Depuis le :", value=default_start, key=f"start_{ticker}")
+                        with col_date2:
+                            end_date = st.date_input("Jusqu'au :", value=datetime.today(), key=f"end_{ticker}")
+
+                        str_start = start_date.strftime("%Y-%m-%d")
+                        str_end = end_date.strftime("%Y-%m-%d")
+
+                        # On filtre uniquement les données pour le graphique
+                        filtered_data = ticker_data[(ticker_data['date'] >= str_start) & (ticker_data['date'] <= str_end)]
+                        
                         plot_data = []
-                        for _, row in ticker_data.iterrows():
+                        for _, row in filtered_data.iterrows():
                             t_price = float(row['buy_price'])
                             qty = float(row['quantity'])
                             t_type = row.get('trans_type', 'Achat')
@@ -102,8 +112,7 @@ def show_system2():
                                 if t_type == "Achat":
                                     lot_pct = ((c_price - t_price) / t_price) * 100
                                 else:
-                                    # Pour une vente : Si le stock monte APRÈS la vente, le rendement est perçu
-                                    # comme négatif (tu as manqué des gains). S'il descend, c'est positif.
+                                    # Pour une vente : le rendement est inversé
                                     lot_pct = ((t_price - c_price) / t_price) * 100
                                     
                                 label_name = f"{t_type} du {t_date} ({qty})"
@@ -119,7 +128,6 @@ def show_system2():
                         if plot_data:
                             df_plot = pd.DataFrame(plot_data)
                             
-                            # Code de couleurs : Bleu pour l'Achat, Jaune/Or pour la Vente
                             fig = px.bar(df_plot, x="Lot", y="Rendement (%)", 
                                          text="Rendement (%)", color="Type",
                                          color_discrete_map={"Achat": "#1f77b4", "Vente": "#ffbf00"},
@@ -128,6 +136,8 @@ def show_system2():
                             fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
                             fig.update_layout(xaxis_title="Lots (Date et Quantité)", yaxis_title="Rendement Actuel (%)")
                             st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.info("Aucune transaction trouvée entre ces dates pour ce titre.")
                         
                         st.divider()
 
@@ -142,7 +152,6 @@ def show_system2():
                                         st.write(f"- [{n['title']}]({n['link']})")
                                 else:
                                     st.write("Aucune nouvelle structurée trouvée.")
-                                    # Lien de secours direct vers Yahoo
                                     st.markdown(f"[🔍 Voir les actus sur Yahoo Finance](https://finance.yahoo.com/quote/{ticker})")
                                     
                         with col2:
@@ -158,10 +167,8 @@ def show_system2():
                                 st.progress(75) 
                                 st.caption("L'IA estime à 75% les chances d'un bon trimestre basé sur le momentum actuel.")
 
-
     # --- TAB 2: GÉRER ---
     with tab_manage:
-        
         if not my_trans.empty:
             st.subheader("Mes Titres Actuels")
             unique_tickers = my_trans['ticker'].unique()
@@ -169,7 +176,6 @@ def show_system2():
             for t in unique_tickers:
                 df_t = my_trans[my_trans['ticker'] == t]
                 
-                # Calcul du total d'actions possédées (Achat - Vente)
                 total_qty = 0
                 for _, r in df_t.iterrows():
                     q = float(r['quantity'])
@@ -196,11 +202,13 @@ def show_system2():
                                 
                     with col_hist:
                         st.markdown("**Historique de tes lots**")
-                        for idx, row in df_t.iterrows():
+                        # Tri par date décroissante pour voir le plus récent en premier
+                        df_t_sorted = df_t.sort_values(by='date', ascending=False)
+                        for idx, row in df_t_sorted.iterrows():
                             t_type = row.get('trans_type', 'Achat')
                             icon = "🔵" if t_type == "Achat" else "🟡"
                             st.write(f"{icon} **{t_type}** | {row['date']} | Qty: {row['quantity']} | {row['buy_price']}$")
-                            if st.button("🗑️ Supprimer ce lot précis", key=f"del_{row['id']}"):
+                            if st.button("🗑️ Supprimer", key=f"del_{row['id']}"):
                                 delete_stock_transaction(row['id'])
                                 st.rerun()
         
@@ -209,7 +217,7 @@ def show_system2():
         with st.form("new_stock_form"):
             col1, col2 = st.columns(2)
             with col1:
-                new_ticker = st.text_input("Symbole (ex: CGNT.V, AAPL)").upper()
+                new_ticker = st.text_input("Symbole (ex: CGNT.V, NVDA)").upper()
                 new_date_init = st.date_input("Date d'achat initial")
             with col2:
                 new_qty_init = st.number_input("Quantité achetée", min_value=0.01, step=1.0)
