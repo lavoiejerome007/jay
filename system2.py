@@ -5,12 +5,10 @@ import plotly.express as px
 from datetime import datetime
 from database import load_stock_transactions, add_stock_transaction, delete_stock_transaction
 
-# Cache pour ne pas spammer Yahoo Finance à chaque clic
-@st.cache_data(ttl=900) # Garde en mémoire 15 minutes
+@st.cache_data(ttl=900)
 def get_stock_info(ticker):
     try:
         stock = yf.Ticker(ticker)
-        # Récupérer l'historique sur 2 jours pour avoir la variation quotidienne
         hist = stock.history(period="2d")
         if len(hist) >= 2:
             current_price = hist['Close'].iloc[-1]
@@ -22,22 +20,28 @@ def get_stock_info(ticker):
         else:
             return None
             
-        # Récupération des infos basiques
-        news = stock.news[:3] if stock.news else []
+        # --- CORRECTION DES NOUVELLES ---
+        raw_news = stock.news
+        clean_news = []
+        if raw_news:
+            for n in raw_news[:3]:
+                # On fouille dans la nouvelle structure de données de Yahoo Finance
+                title = n.get('title') or n.get('content', {}).get('title') or "Titre indisponible"
+                link = n.get('link') or n.get('content', {}).get('clickThroughUrl', {}).get('url') or "#"
+                if title != "Titre indisponible":
+                    clean_news.append({"title": title, "link": link})
         
-        # Prochain trimestre (Earnings)
         earnings_date = "Date non disponible"
         try:
             calendar = stock.get_earnings_dates(limit=1)
             if calendar is not None and not calendar.empty:
                 earnings_date = calendar.index[0].strftime("%Y-%m-%d")
-        except:
-            pass
+        except: pass
 
         return {
             "current_price": current_price,
             "daily_pct": daily_pct,
-            "news": news,
+            "news": clean_news,
             "earnings_date": earnings_date
         }
     except Exception:
@@ -50,7 +54,7 @@ def show_system2():
         
     st.title("📈 Suivi Boursier & IA")
     
-    tab_view, tab_manage = st.tabs(["📈 Mes Titres", "⚙️ Gérer mes titres"])
+    tab_view, tab_manage = st.tabs(["📈 Mon Portefeuille", "⚙️ Gérer mes transactions"])
     
     df_trans = load_stock_transactions()
     my_trans = pd.DataFrame()
@@ -59,18 +63,24 @@ def show_system2():
 
     # --- TAB 1: VISUALISER ---
     with tab_view:
-        st.subheader("Analyse de mon portefeuille")
+        st.subheader("Analyse de performance")
         
         if my_trans.empty:
-            st.info("Tu n'as aucun titre. Va dans l'onglet 'Gérer mes titres' pour en ajouter (ex: CGNT.V).")
+            st.info("Tu n'as aucune transaction. Va dans l'onglet 'Gérer mes transactions' pour en ajouter.")
         else:
+            # Filtre de date
+            filter_date = st.date_input("Afficher les données jusqu'au :", value=datetime.today())
+            str_filter_date = filter_date.strftime("%Y-%m-%d")
+            
             unique_tickers = my_trans['ticker'].unique()
             
             for ticker in unique_tickers:
-                ticker_data = my_trans[my_trans['ticker'] == ticker]
+                # Appliquer le filtre de date
+                ticker_data = my_trans[(my_trans['ticker'] == ticker) & (my_trans['date'] <= str_filter_date)]
+                
                 info = get_stock_info(ticker)
                 
-                if info:
+                if info and not ticker_data.empty:
                     c_price = info['current_price']
                     d_pct = info['daily_pct']
                     color = "green" if d_pct >= 0 else "red"
@@ -78,37 +88,49 @@ def show_system2():
                     
                     st.markdown(f"### {ticker} : {c_price:.2f}$ <span style='color:{color}'>({arrow} {d_pct:.2f}%) aujourd'hui</span>", unsafe_allow_html=True)
                     
-                    with st.expander(f"📊 Voir les détails avancés pour {ticker}"):
-                        # 1. GRAPHIQUE DES LOTS
-                        st.markdown("#### Performance de tes lots d'achat")
+                    with st.expander(f"📊 Graphique de performance & IA pour {ticker}"):
+                        st.markdown("#### Performance par lot")
                         
                         plot_data = []
                         for _, row in ticker_data.iterrows():
-                            b_price = float(row['buy_price'])
+                            t_price = float(row['buy_price'])
                             qty = float(row['quantity'])
-                            if b_price > 0:
-                                lot_pct = ((c_price - b_price) / b_price) * 100
+                            t_type = row.get('trans_type', 'Achat')
+                            t_date = row['date']
+                            
+                            if t_price > 0:
+                                if t_type == "Achat":
+                                    lot_pct = ((c_price - t_price) / t_price) * 100
+                                else:
+                                    # Pour une vente : Si le stock monte APRÈS la vente, le rendement est perçu
+                                    # comme négatif (tu as manqué des gains). S'il descend, c'est positif.
+                                    lot_pct = ((t_price - c_price) / t_price) * 100
+                                    
+                                label_name = f"{t_type} du {t_date} ({qty})"
+                                
                                 plot_data.append({
-                                    "Date d'achat": row['date'],
+                                    "Lot": label_name,
                                     "Quantité": qty,
                                     "Rendement (%)": lot_pct,
-                                    "Prix payé": b_price
+                                    "Prix d'action": t_price,
+                                    "Type": t_type
                                 })
                         
                         if plot_data:
                             df_plot = pd.DataFrame(plot_data)
-                            fig = px.bar(df_plot, x="Date d'achat", y="Rendement (%)", 
-                                         text="Rendement (%)", color="Rendement (%)",
-                                         color_continuous_scale=["red", "gray", "green"],
-                                         color_continuous_midpoint=0,
-                                         hover_data=["Quantité", "Prix payé"],
-                                         title=f"Rendement par date d'achat ({ticker})")
+                            
+                            # Code de couleurs : Bleu pour l'Achat, Jaune/Or pour la Vente
+                            fig = px.bar(df_plot, x="Lot", y="Rendement (%)", 
+                                         text="Rendement (%)", color="Type",
+                                         color_discrete_map={"Achat": "#1f77b4", "Vente": "#ffbf00"},
+                                         hover_data=["Quantité", "Prix d'action"],
+                                         title=f"Rendement de tes actions {ticker}")
                             fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                            fig.update_layout(xaxis_title="Lots (Date et Quantité)", yaxis_title="Rendement Actuel (%)")
                             st.plotly_chart(fig, use_container_width=True)
                         
                         st.divider()
 
-                        # 2. NOUVELLES & PRÉDICTIONS
                         st.markdown("#### 📰 Événements & Prévisions")
                         col1, col2, col3 = st.columns(3)
                         
@@ -117,53 +139,84 @@ def show_system2():
                                 st.markdown("🗓️ **Dernier mois / Aujourd'hui**")
                                 if info['news']:
                                     for n in info['news']:
-                                        st.write(f"- [{n.get('title', 'Titre indisponible')}]({n.get('link', '#')})")
+                                        st.write(f"- [{n['title']}]({n['link']})")
                                 else:
-                                    st.write("Aucune nouvelle récente trouvée par le système.")
+                                    st.write("Aucune nouvelle structurée trouvée.")
+                                    # Lien de secours direct vers Yahoo
+                                    st.markdown(f"[🔍 Voir les actus sur Yahoo Finance](https://finance.yahoo.com/quote/{ticker})")
                                     
                         with col2:
                             with st.container(border=True):
                                 st.markdown("🔮 **Prochain mois (Analyse IA)**")
-                                st.info("⚙️ *Module IA en attente* : Prêt à intégrer un flux prédictif (ex: 'Netflix annonce un partenariat avec Amazon').")
+                                st.info("⚙️ Prêt pour l'IA (Ex: Netflix annonce un partenariat). En attente de clé API.")
                         
                         with col3:
                             with st.container(border=True):
                                 st.markdown("📈 **Prochain Trimestre**")
                                 st.write(f"**Date prévue :** {info['earnings_date']}")
                                 st.write("**Prévision de succès :**")
-                                st.progress(75) # Valeur factice pour le design
+                                st.progress(75) 
                                 st.caption("L'IA estime à 75% les chances d'un bon trimestre basé sur le momentum actuel.")
 
 
     # --- TAB 2: GÉRER ---
     with tab_manage:
-        st.subheader("Ajouter un achat")
-        with st.form("add_stock_form"):
+        
+        if not my_trans.empty:
+            st.subheader("Mes Titres Actuels")
+            unique_tickers = my_trans['ticker'].unique()
+            
+            for t in unique_tickers:
+                df_t = my_trans[my_trans['ticker'] == t]
+                
+                # Calcul du total d'actions possédées (Achat - Vente)
+                total_qty = 0
+                for _, r in df_t.iterrows():
+                    q = float(r['quantity'])
+                    if r.get('trans_type', 'Achat') == 'Achat': total_qty += q
+                    else: total_qty -= q
+                
+                with st.expander(f"📁 {t} - Total en main : {total_qty} actions", expanded=False):
+                    col_action, col_hist = st.columns(2)
+                    
+                    with col_action:
+                        st.markdown("**Ajouter une transaction (Achat/Vente)**")
+                        action = st.selectbox("Type d'action", ["Achat", "Vente"], key=f"act_{t}")
+                        new_date = st.date_input("Date de la transaction", key=f"date_{t}")
+                        new_qty = st.number_input("Quantité", min_value=0.01, step=1.0, key=f"qty_{t}")
+                        new_price = st.number_input("Prix unitaire de la transaction ($)", min_value=0.01, step=0.1, key=f"prc_{t}")
+                        
+                        if st.button("Enregistrer", type="primary", key=f"btn_save_{t}"):
+                            if action == "Vente" and new_qty > total_qty:
+                                st.error("Tu essaies de vendre plus d'actions que tu n'en possèdes actuellement !")
+                            else:
+                                success, msg = add_stock_transaction(st.session_state['username'], t, new_date, new_qty, new_price, action)
+                                if success: st.rerun()
+                                else: st.error(msg)
+                                
+                    with col_hist:
+                        st.markdown("**Historique de tes lots**")
+                        for idx, row in df_t.iterrows():
+                            t_type = row.get('trans_type', 'Achat')
+                            icon = "🔵" if t_type == "Achat" else "🟡"
+                            st.write(f"{icon} **{t_type}** | {row['date']} | Qty: {row['quantity']} | {row['buy_price']}$")
+                            if st.button("🗑️ Supprimer ce lot précis", key=f"del_{row['id']}"):
+                                delete_stock_transaction(row['id'])
+                                st.rerun()
+        
+        st.divider()
+        st.subheader("Ajouter un TOUT NOUVEAU titre")
+        with st.form("new_stock_form"):
             col1, col2 = st.columns(2)
             with col1:
-                new_ticker = st.text_input("Symbole (ex: CGNT.V, AAPL, TSLA)").upper()
-                new_date = st.date_input("Date d'achat")
+                new_ticker = st.text_input("Symbole (ex: CGNT.V, AAPL)").upper()
+                new_date_init = st.date_input("Date d'achat initial")
             with col2:
-                new_qty = st.number_input("Quantité d'actions", min_value=0.01, step=1.0)
-                new_price = st.number_input("Prix d'achat par action ($)", min_value=0.01, step=0.1)
+                new_qty_init = st.number_input("Quantité achetée", min_value=0.01, step=1.0)
+                new_price_init = st.number_input("Prix d'achat unitaire ($)", min_value=0.01, step=0.1)
                 
-            submitted = st.form_submit_button("Ajouter ce lot")
-            if submitted and new_ticker:
-                success, msg = add_stock_transaction(st.session_state['username'], new_ticker, new_date, new_qty, new_price)
-                if success:
-                    st.success(f"{new_qty} actions de {new_ticker} ajoutées !")
-                    st.rerun()
-                else:
-                    st.error("Erreur : " + msg)
-                    
-        st.divider()
-        st.subheader("Mes transactions existantes")
-        if not my_trans.empty:
-            for idx, row in my_trans.iterrows():
-                col_info, col_btn = st.columns([4, 1])
-                with col_info:
-                    st.write(f"**{row['ticker']}** | Acheté le {row['date']} | Qty: {row['quantity']} | Prix: {row['buy_price']}$")
-                with col_btn:
-                    if st.button("🗑️", key=f"del_stk_{row['id']}"):
-                        delete_stock_transaction(row['id'])
-                        st.rerun()
+            if st.form_submit_button("Ajouter ce nouveau titre"):
+                if new_ticker:
+                    success, msg = add_stock_transaction(st.session_state['username'], new_ticker, new_date_init, new_qty_init, new_price_init, "Achat")
+                    if success: st.rerun()
+                    else: st.error(msg)

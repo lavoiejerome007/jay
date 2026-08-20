@@ -210,7 +210,7 @@ def delete_full_collection(collection_name, owner):
 
 def load_stock_transactions():
     client = get_gsheet_client()
-    default_cols = ['id', 'owner', 'ticker', 'date', 'quantity', 'buy_price']
+    default_cols = ['id', 'owner', 'ticker', 'date', 'quantity', 'buy_price', 'trans_type']
     if not client: return pd.DataFrame(columns=default_cols)
     try:
         sheet = get_or_create_worksheet(client, "StockTransactions", default_cols)
@@ -218,23 +218,35 @@ def load_stock_transactions():
         if not rows or len(rows) <= 1: return pd.DataFrame(columns=default_cols)
         
         headers = rows[0]
+        # Ajouter la colonne trans_type si elle n'existait pas
+        if 'trans_type' not in headers:
+            try: 
+                sheet.update_cell(1, len(headers)+1, 'trans_type')
+                headers.append('trans_type')
+            except Exception: pass
+            
         data = [r[:len(headers)] + [""] * (len(headers) - len(r)) for r in rows[1:]]
         df = pd.DataFrame(data, columns=headers)
         
-        # S'assurer que les colonnes numériques sont bien du bon type
         df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
         df['buy_price'] = pd.to_numeric(df['buy_price'], errors='coerce').fillna(0.0)
+        
+        if 'trans_type' in df.columns:
+            df['trans_type'] = df['trans_type'].replace("", "Achat")
+        else:
+            df['trans_type'] = "Achat"
+            
         return df
     except Exception: 
         return pd.DataFrame(columns=default_cols)
 
-def add_stock_transaction(owner, ticker, date_str, quantity, buy_price):
+def add_stock_transaction(owner, ticker, date_str, quantity, price, trans_type="Achat"):
     client = get_gsheet_client()
     if client:
         try:
             sheet = client.open("Streamlit_DB").worksheet("StockTransactions")
             new_id = str(int(datetime.now().timestamp() * 1000))
-            sheet.append_row([new_id, owner, str(ticker).upper(), str(date_str), str(quantity), str(buy_price)])
+            sheet.append_row([new_id, owner, str(ticker).upper(), str(date_str), str(quantity), str(price), trans_type])
             return True, ""
         except Exception as e:
             return False, str(e)
