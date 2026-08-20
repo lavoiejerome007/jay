@@ -32,12 +32,21 @@ def get_macro_analysis(portfolio_data):
 
 def get_radar_tickers(sector):
     if not client: return []
-    prompt = f"Donne-moi 10 symboles boursiers (tickers Yahoo Finance, ex: MSFT, NVDA, TSLA) correspondants au secteur '{sector}'. Réponds UNIQUEMENT par une liste de tickers séparés par des virgules, rien d'autre."
+    # Mise à jour du prompt : Canada, moyen terme, pas seulement les géants
+    prompt = f"Donne-moi 10 symboles boursiers accessibles à un investisseur canadien (bourses TSX avec '.TO', TSXV avec '.V', ou grandes bourses US NASDAQ/NYSE) dans le secteur '{sector}'. Je cherche des entreprises avec un excellent potentiel de croissance à moyen terme, pas uniquement les plus grosses capitalisations boursières. Réponds UNIQUEMENT par une liste de tickers séparés par des virgules."
     try:
         response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
         tickers = re.findall(r'\b[A-Z\.-]{2,10}\b', response.text)
         return list(set(tickers))
     except Exception: return []
+
+def get_radar_explanation(ticker, sector):
+    if not client: return "Erreur IA."
+    prompt = f"Analyse l'action {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
+    try:
+        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
+        return response.text
+    except Exception as e: return f"Erreur IA : {str(e)}"
 
 # --- CALCUL DES INDICATEURS MATHÉMATIQUES ---
 def calculate_rsi(series, period=14):
@@ -141,14 +150,14 @@ def show_system2():
                             st.write(get_macro_analysis(portfolio_details))
                     
                     st.divider()
-                    health_color = "green" if weighted_daily_pct >= 0 else "red"
-                    st.markdown(f"**Santé du secteur/portefeuille aujourd'hui :** <span style='color:{health_color}; font-size:1.2em;'>{weighted_daily_pct:.2f}%</span>", unsafe_allow_html=True)
+                    health_color = "#00CC96" if weighted_daily_pct >= 0 else "#EF553B"
+                    st.markdown(f"**Santé du portefeuille aujourd'hui :** <span style='color:{health_color}; font-size:1.2em; font-weight:bold;'>{weighted_daily_pct:.2f}%</span>", unsafe_allow_html=True)
 
             with macro_col2:
                 if portfolio_details:
-                    fig_pie = px.pie(pd.DataFrame(portfolio_details), values='Valeur', names='Ticker', title="Diversification", hole=0.4)
-                    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                    fig_pie.update_layout(margin=dict(t=30, b=0, l=0, r=0), height=250)
+                    fig_pie = px.pie(pd.DataFrame(portfolio_details), values='Valeur', names='Ticker', hole=0.45)
+                    fig_pie.update_traces(textposition='inside', textinfo='percent+label', marker=dict(line=dict(color='#000000', width=1)))
+                    fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=250, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                     st.plotly_chart(fig_pie, use_container_width=True)
 
             st.divider()
@@ -163,13 +172,13 @@ def show_system2():
                 if info and not ticker_data.empty:
                     c_price, d_pct = info['current_price'], info['daily_pct']
                     rsi, drawdown = info['rsi'], info['drawdown']
-                    color = "green" if d_pct >= 0 else "red"
+                    color = "#00CC96" if d_pct >= 0 else "#EF553B"
                     
                     st.markdown(f"### {ticker} | 📦 {total_qty:.2f} actions")
-                    st.markdown(f"Prix: **{c_price:.2f}$** <span style='color:{color}'>({d_pct:.2f}%)</span>", unsafe_allow_html=True)
+                    st.markdown(f"Prix: **{c_price:.2f}$** <span style='color:{color}; font-weight:bold;'>({d_pct:.2f}%)</span>", unsafe_allow_html=True)
                     
                     with st.expander(f"📊 Graphiques & Indicateurs pour {ticker}"):
-                        # --- GRAPHIQUE DE PERFORMANCE (Réintégré) ---
+                        # --- GRAPHIQUE DE PERFORMANCE EMBELLI ---
                         col_date1, col_date2 = st.columns(2)
                         with col_date1:
                             start_date = st.date_input("Depuis le :", value=datetime.today() - timedelta(days=365), key=f"start_{ticker}")
@@ -194,17 +203,24 @@ def show_system2():
                                 })
                         
                         if plot_data:
+                            # Amélioration du design du graphique
                             fig = px.bar(pd.DataFrame(plot_data), x="Lot", y="Rendement (%)", color="Type", 
-                                         color_discrete_map={"Achat": "#1f77b4", "Vente": "#ffbf00"},
-                                         title=f"Performance des transactions {ticker}", hover_data=["Qty"])
-                            fig.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                                         color_discrete_map={"Achat": "#00CC96", "Vente": "#AB63FA"},
+                                         hover_data={"Qty": True, "Type": False},
+                                         text="Rendement (%)")
+                            fig.update_traces(texttemplate='<b>%{text:.1f}%</b>', textposition='outside', 
+                                              marker_line_color='black', marker_line_width=1.5, opacity=0.9)
+                            fig.update_layout(title_text=f"Rendement par lot pour {ticker}",
+                                              plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                                              xaxis_title="", yaxis_title="Rendement Actuel (%)",
+                                              margin=dict(l=0, r=0, t=40, b=0), hovermode="x unified",
+                                              yaxis=dict(gridcolor="rgba(128,128,128,0.2)"))
                             st.plotly_chart(fig, use_container_width=True)
                         else:
                             st.info("Aucune transaction trouvée dans cette plage de dates.")
                             
                         st.divider()
 
-                        # --- INDICATEURS TECHNIQUES ---
                         ind_col1, ind_col2, ind_col3 = st.columns(3)
                         with ind_col1:
                             st.metric(label="RSI (Surchauffe/Survente)", value=f"{rsi:.1f}", delta="Suracheté (>70)" if rsi > 70 else "Survendu (<30)" if rsi < 30 else "Neutre", delta_color="inverse")
@@ -215,32 +231,30 @@ def show_system2():
                         
                         st.divider()
                         
-                        # --- ANALYSE IA ---
                         if st.button(f"🧠 Analyse IA pour {ticker}", key=f"ai_{ticker}"):
                             with st.spinner("Analyse technique en cours..."):
                                 st.write(get_ai_analysis(ticker, c_price, d_pct, rsi, drawdown))
 
     # --- TAB 2: RADAR SECTORIEL ---
     with tab_radar:
-        st.subheader("📡 Radar IA (Détection d'opportunités)")
-        st.write("Demande à l'IA de trouver des actions dans un secteur précis, puis filtre par volume d'échange.")
+        st.subheader("📡 Radar IA (Potentiel Moyen Terme)")
+        st.write("Trouve des actions accessibles depuis le Canada avec un fort potentiel de croissance (pas uniquement selon le volume).")
         
         col_r1, col_r2 = st.columns([2, 1])
         with col_r1:
             sector_input = st.text_input("Secteur à surveiller", "Automatisation, Intelligence Artificielle et Robotique")
         with col_r2:
-            min_volume = st.select_slider("Volume quotidien minimal", options=[50000, 250000, 1000000, 5000000], value=1000000, format_func=lambda x: f"{x:,.0f}".replace(",", " "))
+            min_volume = st.select_slider("Filtre Volume (Liquidité)", options=[10000, 50000, 250000, 1000000], value=50000, format_func=lambda x: f"{x:,.0f}".replace(",", " "))
 
-        if st.button("Scanner le marché"):
-            with st.spinner("L'IA cherche les meilleures actions..."):
+        if st.button("Chercher des opportunités"):
+            with st.spinner("L'IA scanne le marché nord-américain..."):
                 tickers_trouves = get_radar_tickers(sector_input)
                 
                 if not tickers_trouves:
                     st.warning("Aucun ticker trouvé. Essaie de reformuler le secteur.")
                 else:
-                    st.success(f"{len(tickers_trouves)} actions identifiées. Vérification des volumes...")
+                    st.success("Analyse terminée ! Clique sur un titre pour voir le potentiel et le risque.")
                     
-                    results = []
                     for t in tickers_trouves:
                         try:
                             stock_data = yf.Ticker(t).fast_info
@@ -248,13 +262,13 @@ def show_system2():
                             price = stock_data.get('lastPrice') or 0
                             
                             if vol >= min_volume and price > 0:
-                                results.append({"Ticker": t, "Prix": round(price, 2), "Volume": int(vol)})
+                                # Au lieu d'un tableau brut, on crée un menu déroulant cliquable pour chaque action
+                                with st.expander(f"🎯 **{t}** — Prix actuel: {price:.2f}$ | Volume: {int(vol):,}"):
+                                    if st.button(f"Pourquoi acheter {t} ?", key=f"why_{t}"):
+                                        with st.spinner(f"Calcul du risque et du potentiel pour {t}..."):
+                                            explication = get_radar_explanation(t, sector_input)
+                                            st.write(explication)
                         except: pass
-                    
-                    if results:
-                        st.dataframe(pd.DataFrame(results).sort_values(by="Volume", ascending=False), use_container_width=True)
-                    else:
-                        st.info("Aucune des actions trouvées ne dépasse ton exigence de volume.")
 
     # --- TAB 3: GÉRER MES TRANSACTIONS ---
     with tab_manage:
@@ -276,7 +290,7 @@ def show_system2():
                             st.rerun()
                     with c2:
                         for _, row in df_t.sort_values(by="date", ascending=False).iterrows():
-                            icon = '🔵' if row.get('trans_type', 'Achat') == 'Achat' else '🟡'
+                            icon = '🟢' if row.get('trans_type', 'Achat') == 'Achat' else '🟣'
                             st.write(f"{icon} {row.get('trans_type', 'Achat')} | {row['date']} | {row['quantity']} à {row['buy_price']}$")
                             if st.button("Supprimer", key=f"del_{row['id']}"):
                                 delete_stock_transaction(row['id'])
