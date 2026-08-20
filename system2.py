@@ -29,7 +29,6 @@ def call_pro_ai(prompt):
         response = client.models.generate_content(model="gemini-3.1-pro", contents=prompt)
         return response.text
     except Exception as e:
-        # Repli automatique sur Flash si le quota Pro est atteint
         try:
             response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
             return response.text + "\n\n*(Note : Basculé sur Flash suite à la limite du modèle Pro)*"
@@ -57,10 +56,13 @@ def get_radar_explanation(ticker, sector):
     prompt = f"Analyse l'action canadienne {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
     return call_flash_ai(prompt)
 
-# --- FONCTIONS IA PRO POUR LA GESTION DE PORTEFEUILLE ---
+# --- FONCTIONS IA PRO POUR LA GESTION DE PORTEFEUILLE (AVEC RECHERCHE APPROONDIE) ---
 def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, comments):
     prompt = f"""
-    Agis en tant que gestionnaire de portefeuille expert canadien. Crée une allocation d'actifs optimale pour un investissement en dollars canadiens (CAD) sans conversion USD (UNIQUEMENT des tickers .TO ou .V).
+    Agis en tant que gestionnaire de patrimoine et analyste quantitatif expert pour un investisseur canadien. 
+    Je veux une allocation d'actifs rigoureuse, hautement réfléchie et exempte de réponses génériques ou paresseuses (interdit de balancer machinalement des choix évidents sans analyse critique, compare par exemple les nuances de performance et de diversification entre des options similaires comme VFV vs VEQT/XEQT si pertinent).
+    
+    PARAMÈTRES DE L'INVESTISSEUR :
     - Budget total à placer : {budget}$ CAD
     - Tolérance au risque : {risk}% (0% = très sécuritaire, 100% = spéculatif / haut risque)
     - Durée du placement : {duration}
@@ -68,26 +70,27 @@ def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, 
     - Nombre de titres différents souhaités : {nb_tickers}
     - Commentaires de l'investisseur : {comments}
 
-    Fournis une répartition précise :
-    1. Le nom et le ticker exact (.TO ou .V) de chaque action recommandée.
-    2. Le montant exact à investir par titre et le pourcentage du portefeuille.
-    3. Un prix cible d'achat et un niveau de stop-loss suggéré pour chaque titre.
-    4. Une brève justification stratégique.
+    CONTRAINTES STRICTES :
+    1. Utilise UNIQUEMENT des titres/FNB cotés au Canada (terminant par .TO ou .V) négociables en CAD sans frais de conversion chez Disnat.
+    2. Même pour un profil sécuritaire, refuse la facilité : creuse pour trouver les meilleures structures de frais (MER), la diversification optimale et les synergies entre les titres.
+    3. Fournis pour chaque titre recommandé :
+       - Le ticker exact (.TO ou .V) et son nom.
+       - Le montant exact à investir et le pourcentage du portefeuille.
+       - Une justification poussée expliquant *pourquoi* ce choix surpasse les alternatives courantes (analyse des indices suivis, exposition géographique ou sectorielle).
+       - Un prix cible d'achat et un niveau de stop-loss réaliste.
     """
     return call_pro_ai(prompt)
 
 def get_pro_additional_funds_advice(extra_money, current_portfolio_summary):
     prompt = f"""
-    J'ai un montant supplémentaire de {extra_money}$ CAD à placer dans mon portefeuille actuel.
-    Voici l'état actuel de mes positions et de ma stratégie : {current_portfolio_summary}.
-    Où devrais-je placer cet argent supplémentaire pour maintenir l'équilibre ou renforcer mes meilleures positions canadiennes (.TO / .V) ? Donne des montants et des tickers précis.
+    J'ai un montant supplémentaire de {extra_money}$ CAD à placer. Fais une analyse approfondie de mon portefeuille actuel ({current_portfolio_summary}) et indique-moi précisément où injecter cet argent en optimisant la diversification et en évitant les doublons inutiles (uniquement des tickers canadiens .TO ou .V).
     """
     return call_pro_ai(prompt)
 
 def get_pro_rebalancing_advice(current_portfolio_summary):
     prompt = f"""
-    Analyse mon portefeuille actuel et sa dérive temporelle : {current_portfolio_summary}.
-    Fournis un plan de réajustement précis (quels titres vendre partiellement, lesquels renforcer) pour ramener le portefeuille vers une allocation optimale et saine.
+    Analyse en profondeur la dérive de mon portefeuille et de ses pondérations au fil du temps : {current_portfolio_summary}.
+    Fournis un plan de réajustement tactique rigoureux (arbitrages, prises de profits, renforcements) pour optimiser le rendement global tout en respectant un profil sain.
     """
     return call_pro_ai(prompt)
 
@@ -315,51 +318,50 @@ def show_system2():
                     add_stock_transaction(st.session_state['username'], t, d, q, p, "Achat")
                     st.rerun()
 
-    # --- TAB 4: STRATÉGIE & ALLOCATION (MOTEUR PRO) ---
+    # --- TAB 4: STRATÉGIE & ALLOCATION (MOTEUR PRO APPROFONDI) ---
     with tab_strategy:
-        st.subheader("🎯 Gestion & Stratégie de Portefeuille (Propulsé par Gemini Pro)")
-        st.write("Configure ton profil d'investissement canadien (.TO / .V) pour obtenir une allocation sur-mesure, ajouter des fonds ou réajuster ton portefeuille.")
+        st.subheader("🎯 Gestion & Stratégie de Portefeuille (Propulsé par Gemini Pro - Recherche Approfondie)")
+        st.write("Configure ton profil d'investissement canadien (.TO / .V) pour obtenir une allocation experte, sans choix paresseux.")
 
         with st.form("strategy_form"):
             col_s1, col_s2 = st.columns(2)
             with col_s1:
                 strat_budget = st.number_input("Montant d'argent à placer ($ CAD)", min_value=100.0, step=500.0, value=5000.0)
-                strat_risk = st.slider("Tolérance au risque (%)", min_value=0, max_value=100, value=80, help="0% = Très sécuritaire / Dividendes, 100% = Croissance agressive / Haut risque")
+                strat_risk = st.slider("Tolérance au risque (%)", min_value=0, max_value=100, value=80, help="0% = Très sécuritaire, 100% = Croissance agressive")
                 strat_duration = st.text_input("Durée du placement", "3 à 5 ans")
             with col_s2:
-                strat_objective = st.text_input("Objectif du placement", "Maximiser la croissance du capital à moyen terme")
+                strat_objective = st.text_input("Objectif du placement", "Maximiser la croissance du capital intelligemment")
                 strat_nb_tickers = st.number_input("Nombre de titres différents souhaités", min_value=1, max_value=15, value=5)
             
-            strat_comments = st.text_area("Commentaires / Infos additionnelles", "Je veux éviter les minières pures, privilégier la techno et l'énergie canadiennes.")
+            strat_comments = st.text_area("Commentaires / Infos additionnelles", "Je veux des analyses comparatives fines (ex: pourquoi tel FNB plutôt qu'un autre) et des choix optimisés en CAD.")
             
-            submitted_strategy = st.form_submit_button("Générer la stratégie d'allocation (IA Pro)")
+            submitted_strategy = st.form_submit_button("Générer la stratégie d'allocation experte (IA Pro)")
 
         if submitted_strategy:
-            with st.spinner("Génération de l'allocation optimale par l'IA Pro..."):
+            with st.spinner("Analyse quantitative et recherche approfondie en cours par l'IA Pro..."):
                 allocation_result = get_pro_portfolio_allocation(strat_budget, strat_risk, strat_duration, strat_objective, strat_nb_tickers, strat_comments)
                 st.session_state["last_strategy_allocation"] = allocation_result
 
         if "last_strategy_allocation" in st.session_state:
-            st.markdown("### 📋 Résultat de la Stratégie Proposée")
+            st.markdown("### 📋 Résultat de la Stratégie Experte")
             st.write(st.session_state["last_strategy_allocation"])
             
             if st.button("✅ Accepter et appliquer cette stratégie à mon portefeuille"):
-                st.success("Stratégie enregistrée ! (Tu peux automatiser l'import ou ajuster les transactions dans l'onglet Gérer mes transactions).")
+                st.success("Stratégie enregistrée !")
 
         st.divider()
         st.subheader("➕ Ajouter des fonds supplémentaires")
         extra_budget = st.number_input("Montant d'argent supplémentaire à placer ($)", min_value=50.0, step=100.0, value=1000.0, key="extra_b")
-        if st.button("Où placer ces nouveaux fonds ? (IA Pro)"):
-            with st.spinner("Analyse des meilleures opportunités d'ajout..."):
+        if st.button("Où placer ces nouveaux fonds de façon optimale ? (IA Pro)"):
+            with st.spinner("Recherche d'optimisation d'apport..."):
                 portfolio_summary = f"Portefeuille actuel : {unique_tickers if 'unique_tickers' in locals() else 'Vide'}"
                 advice = get_pro_additional_funds_advice(extra_budget, portfolio_summary)
                 st.write(advice)
 
         st.divider()
         st.subheader("⚖️ Réajuster mon portefeuille")
-        st.write("Analyse l'évolution de tes positions pour rééquilibrer le portefeuille selon la dérive temporelle.")
-        if st.button("Lancer le réajustement (IA Pro)"):
-            with st.spinner("Calcul du rééquilibrage..."):
+        if st.button("Lancer le réajustement tactique (IA Pro)"):
+            with st.spinner("Analyse des dérives et rééquilibrage..."):
                 portfolio_summary = f"Transactions actuelles : {my_trans.to_dict() if not my_trans.empty else 'Vide'}"
                 rebal_advice = get_pro_rebalancing_advice(portfolio_summary)
                 st.write(rebal_advice)
