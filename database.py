@@ -203,3 +203,53 @@ def delete_full_collection(collection_name, owner):
             return True, ""
         except Exception as e: return False, str(e)
     return False, "Erreur."
+
+# ==========================================
+# FONCTIONS POUR LE SYSTÈME 2 (BOURSE)
+# ==========================================
+
+def load_stock_transactions():
+    client = get_gsheet_client()
+    default_cols = ['id', 'owner', 'ticker', 'date', 'quantity', 'buy_price']
+    if not client: return pd.DataFrame(columns=default_cols)
+    try:
+        sheet = get_or_create_worksheet(client, "StockTransactions", default_cols)
+        rows = sheet.get_all_values()
+        if not rows or len(rows) <= 1: return pd.DataFrame(columns=default_cols)
+        
+        headers = rows[0]
+        data = [r[:len(headers)] + [""] * (len(headers) - len(r)) for r in rows[1:]]
+        df = pd.DataFrame(data, columns=headers)
+        
+        # S'assurer que les colonnes numériques sont bien du bon type
+        df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce').fillna(0)
+        df['buy_price'] = pd.to_numeric(df['buy_price'], errors='coerce').fillna(0.0)
+        return df
+    except Exception: 
+        return pd.DataFrame(columns=default_cols)
+
+def add_stock_transaction(owner, ticker, date_str, quantity, buy_price):
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("StockTransactions")
+            new_id = str(int(datetime.now().timestamp() * 1000))
+            sheet.append_row([new_id, owner, str(ticker).upper(), str(date_str), str(quantity), str(buy_price)])
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+    return False, "Google Sheets non connecté."
+
+def delete_stock_transaction(trans_id):
+    client = get_gsheet_client()
+    if client:
+        try:
+            sheet = client.open("Streamlit_DB").worksheet("StockTransactions")
+            rows = sheet.get_all_values()
+            for idx, row in enumerate(rows):
+                if row and row[0] == str(trans_id):
+                    if hasattr(sheet, "delete_rows"): sheet.delete_rows(idx + 1)
+                    else: sheet.delete_row(idx + 1)
+                    return True, ""
+        except Exception as e: return False, str(e)
+    return False, "Erreur."
