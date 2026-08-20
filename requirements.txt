@@ -4,3 +4,4 @@ pandas
 google-auth
 yfinance
 plotly
+google-genai
