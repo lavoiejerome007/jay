@@ -32,7 +32,6 @@ def get_macro_analysis(portfolio_data):
 
 def get_radar_tickers(sector):
     if not client: return []
-    # Mise à jour du prompt : Canada, moyen terme, pas seulement les géants
     prompt = f"Donne-moi 10 symboles boursiers accessibles à un investisseur canadien (bourses TSX avec '.TO', TSXV avec '.V', ou grandes bourses US NASDAQ/NYSE) dans le secteur '{sector}'. Je cherche des entreprises avec un excellent potentiel de croissance à moyen terme, pas uniquement les plus grosses capitalisations boursières. Réponds UNIQUEMENT par une liste de tickers séparés par des virgules."
     try:
         response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
@@ -203,7 +202,6 @@ def show_system2():
                                 })
                         
                         if plot_data:
-                            # Amélioration du design du graphique
                             fig = px.bar(pd.DataFrame(plot_data), x="Lot", y="Rendement (%)", color="Type", 
                                          color_discrete_map={"Achat": "#00CC96", "Vente": "#AB63FA"},
                                          hover_data={"Qty": True, "Type": False},
@@ -238,37 +236,30 @@ def show_system2():
     # --- TAB 2: RADAR SECTORIEL ---
     with tab_radar:
         st.subheader("📡 Radar IA (Potentiel Moyen Terme)")
-        st.write("Trouve des actions accessibles depuis le Canada avec un fort potentiel de croissance (pas uniquement selon le volume).")
-        
-        col_r1, col_r2 = st.columns([2, 1])
-        with col_r1:
-            sector_input = st.text_input("Secteur à surveiller", "Automatisation, Intelligence Artificielle et Robotique")
-        with col_r2:
-            min_volume = st.select_slider("Filtre Volume (Liquidité)", options=[10000, 50000, 250000, 1000000], value=50000, format_func=lambda x: f"{x:,.0f}".replace(",", " "))
+        sector_input = st.text_input("Secteur à surveiller", "Automatisation, Intelligence Artificielle et Robotique")
+        min_volume = st.select_slider("Filtre Volume", options=[10000, 50000, 250000, 1000000], value=50000)
 
         if st.button("Chercher des opportunités"):
-            with st.spinner("L'IA scanne le marché nord-américain..."):
-                tickers_trouves = get_radar_tickers(sector_input)
-                
-                if not tickers_trouves:
-                    st.warning("Aucun ticker trouvé. Essaie de reformuler le secteur.")
-                else:
-                    st.success("Analyse terminée ! Clique sur un titre pour voir le potentiel et le risque.")
+            with st.spinner("L'IA scanne le marché..."):
+                st.session_state["radar_tickers"] = get_radar_tickers(sector_input)
+
+        if "radar_tickers" in st.session_state and st.session_state["radar_tickers"]:
+            for t in st.session_state["radar_tickers"]:
+                try:
+                    stock_data = yf.Ticker(t).fast_info
+                    vol = stock_data.get('lastVolume') or 0
+                    price = stock_data.get('lastPrice') or 0
                     
-                    for t in tickers_trouves:
-                        try:
-                            stock_data = yf.Ticker(t).fast_info
-                            vol = stock_data.get('lastVolume') or 0
-                            price = stock_data.get('lastPrice') or 0
+                    if vol >= min_volume and price > 0:
+                        with st.expander(f"🎯 **{t}** — Prix: {price:.2f}$ | Vol: {int(vol):,}"):
+                            if st.button(f"Analyser le potentiel de {t}", key=f"btn_anal_{t}"):
+                                with st.spinner(f"Analyse en cours pour {t}..."):
+                                    explication = get_radar_explanation(t, sector_input)
+                                    st.session_state[f"expl_{t}"] = explication
                             
-                            if vol >= min_volume and price > 0:
-                                # Au lieu d'un tableau brut, on crée un menu déroulant cliquable pour chaque action
-                                with st.expander(f"🎯 **{t}** — Prix actuel: {price:.2f}$ | Volume: {int(vol):,}"):
-                                    if st.button(f"Pourquoi acheter {t} ?", key=f"why_{t}"):
-                                        with st.spinner(f"Calcul du risque et du potentiel pour {t}..."):
-                                            explication = get_radar_explanation(t, sector_input)
-                                            st.write(explication)
-                        except: pass
+                            if f"expl_{t}" in st.session_state:
+                                st.write(st.session_state[f"expl_{t}"])
+                except: continue
 
     # --- TAB 3: GÉRER MES TRANSACTIONS ---
     with tab_manage:
@@ -299,7 +290,7 @@ def show_system2():
         st.divider()
         st.subheader("Ajouter un TOUT NOUVEAU titre")
         with st.form("new_stock"):
-            t = st.text_input("Symbole (ex: AAPL, CGNT.V)").upper()
+            t = st.text_input("Symbole (ex: AAPL, SHOP.TO)").upper()
             d = st.date_input("Date")
             q = st.number_input("Qté", min_value=0.01, step=1.0)
             p = st.number_input("Prix d'achat ($)", min_value=0.01, step=0.1)
