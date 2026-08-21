@@ -4,6 +4,7 @@ import numpy as np
 import yfinance as yf
 import plotly.express as px
 import re
+import json
 from datetime import datetime, timedelta
 from google import genai
 from database import load_stock_transactions, add_stock_transaction, delete_stock_transaction
@@ -133,7 +134,7 @@ def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, 
             market_data_str += f"{m['Ticker']:<8} | {m['Price']:<8} | {m['Drawdown']:<12} | {m['RSI']:<8} | {m['SMA20']:<6} | {m['SMA50']:<6} | {m['SMA200']:<6} | {m['Volatility']:<14} | {m['Vol_Ratio']}\n"
 
     if valid_count == 0:
-        return "Erreur : Impossible de récupérer les données techniques de Yahoo Finance pour le moment."
+        return "Erreur : Impossible de récupérer les données techniques de Yahoo Finance pour le moment.", []
 
     # Étape 3 : Arbitrage quantitatif déterministe basé strictement sur les chiffres du marché
     prompt_final = f"""
@@ -158,8 +159,34 @@ def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, 
        - Montant ($) et allocation (%).
        - Justification quantique/technique basée sur les chiffres fournis (RSI, Drawdown, SMA).
        - Prix cible et niveau de stop-loss sous une SMA clé.
+       
+    4. OBLIGATOIRE POUR L'AUTOMATISATION : À la toute fin de ta réponse, ajoute exactement cette balise `[JSON]` suivie de ta recommandation en format JSON pur, puis termine par `[/JSON]`.
+    Exemple de format attendu :
+    [JSON]
+    [
+      {{"ticker": "VFV.TO", "montant": 2500}},
+      {{"ticker": "RY.TO", "montant": 2500}}
+    ]
+    [/JSON]
     """
-    return call_pro_ai(prompt_final)
+    response_text = call_pro_ai(prompt_final)
+    
+    # Extraction de la partie JSON pour le code Python
+    portfolio_list = []
+    try:
+        match = re.search(r'\[JSON\](.*?)\[/JSON\]', response_text, re.DOTALL)
+        if match:
+            json_str = match.group(1).strip()
+            # Nettoyage d'éventuelles balises markdown résiduelles
+            json_str = json_str.replace('```json', '').replace('```', '')
+            portfolio_list = json.loads(json_str)
+    except Exception as e:
+        pass # Échec silencieux, on retournera une liste vide
+        
+    # Nettoyage du texte d'affichage (on cache la balise JSON à l'utilisateur)
+    display_text = re.sub(r'\[JSON\].*?\[/JSON\]', '', response_text, flags=re.DOTALL).strip()
+    
+    return display_text, portfolio_list
 
 def get_pro_additional_funds_advice(extra_money, current_portfolio_summary):
     prompt = f"""
@@ -408,15 +435,45 @@ def show_system2():
 
         if submitted_strategy:
             with st.spinner("1. Extraction Yahoo Finance... 2. Calcul des métriques techniques... 3. Optimization IA..."):
-                allocation_result = get_pro_portfolio_allocation(strat_budget, strat_risk, strat_duration, strat_objective, strat_nb_tickers, strat_comments)
-                st.session_state["last_strategy_allocation"] = allocation_result
+                display_text, portfolio_data = get_pro_portfolio_allocation(strat_budget, strat_risk, strat_duration, strat_objective, strat_nb_tickers, strat_comments)
+                st.session_state["last_strategy_text"] = display_text
+                st.session_state["last_strategy_data"] = portfolio_data
 
-        if "last_strategy_allocation" in st.session_state:
+        if "last_strategy_text" in st.session_state:
             st.markdown("### 📋 Résultat de la Stratégie Basée sur les Chiffres du Marché")
-            st.write(st.session_state["last_strategy_allocation"])
+            st.write(st.session_state["last_strategy_text"])
             
-            if st.button("✅ Accepter et appliquer cette stratégie à mon portefeuille"):
-                st.success("Stratégie enregistrée !")
+            if st.session_state.get("last_strategy_data"):
+                st.warning("⚠️ **Attention** : Accepter cette stratégie remplacera intégralement votre portefeuille actuel (toutes vos transactions existantes seront supprimées).")
+                if st.button("✅ Accepter et remplacer mon portefeuille par cette stratégie"):
+                    with st.spinner("Mise à jour du portefeuille en cours..."):
+                        # 1. Supprimer l'ancien portefeuille
+                        for _, row in my_trans.iterrows():
+                            delete_stock_transaction(row['id'])
+                            
+                        # 2. Ajouter les nouvelles positions
+                        for item in st.session_state["last_strategy_data"]:
+                            ticker = item.get("ticker")
+                            montant = float(item.get("montant", 0))
+                            if ticker and montant > 0:
+                                info = get_stock_info(ticker)
+                                price = info['current_price'] if info else 1.0 # Fallback 
+                                qty = montant / price if price > 0 else 0
+                                add_stock_transaction(
+                                    st.session_state['username'], 
+                                    ticker, 
+                                    datetime.today().date(), 
+                                    round(qty, 4), 
+                                    round(price, 2), 
+                                    "Achat"
+                                )
+                        
+                    st.success("Portefeuille remplacé avec succès !")
+                    del st.session_state["last_strategy_text"]
+                    del st.session_state["last_strategy_data"]
+                    st.rerun()
+            else:
+                st.info("💡 (L'IA n'a pas pu formater les données pour l'automatisation. Veuillez ajouter ces titres manuellement via l'onglet 'Gérer mes transactions'.)")
 
         st.divider()
         st.subheader("➕ Ajouter des fonds supplémentaires")
