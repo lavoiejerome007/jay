@@ -2,6 +2,7 @@ import streamlit as st
 from database import load_users, save_user, hash_password
 from system1 import show_system1
 from system2 import show_system2
+from system3 import show_system3
 # Plus tard, tu ajouteras : from system2 import show_system2
 
 st.set_page_config(page_title="Mon Application Web", page_icon="🚀", layout="wide")
@@ -84,6 +85,9 @@ else:
 
     elif page == "Système 2":      # <--- AJOUTE CES DEUX LIGNES
         show_system2()
+
+    elif page == "Système 3":      # <--- AJOUTE CES DEUX LIGNES
+        show_system3()
 
     elif page.startswith("Système"):
         if st.button("← Retour"): st.session_state["current_page"] = "Accueil"; st.rerun()
