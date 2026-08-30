@@ -397,7 +397,3 @@ def main():
                 st.write(f"Actions détenues : {data['shares']}")
         
         st.info("Le portefeuille est synchronisé automatiquement avec la section Investissements de votre page d'accueil.")
-
-if __name__ == "__main__":
-    st.set_page_config(page_title="Mon Briefing Personnel", layout="wide")
-    main()
