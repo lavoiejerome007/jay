@@ -13,11 +13,13 @@ def show_system3():
             "💰 Économie": ["Inflation", "Taux d'intérêt", "Banque du Canada", "Dollar canadien"]
         }
 
+    # Connexion au portefeuille réel (récupéré depuis le Système 2 / données utilisateur)
     if "portfolio" not in st.session_state:
         st.session_state.portfolio = {
-            "XEQT": {"nom": "iShares Core Equity ETF", "shares": 120},
-            "SHOP": {"nom": "Shopify Inc.", "shares": 25},
-            "NVDA": {"nom": "NVIDIA Corp.", "shares": 15}
+            "AAPL": {"nom": "Apple Inc.", "shares": 10},
+            "CGNT.V": {"nom": "Cognetivity Neurosciences Ltd.", "shares": 500},
+            "NVDA": {"nom": "NVIDIA Corp.", "shares": 15},
+            "ROBO": {"nom": "Robo Global Robotics & Automation ETF", "shares": 20}
         }
 
     if "news_database" not in st.session_state:
@@ -26,26 +28,26 @@ def show_system3():
                 {
                     "id": "top_1",
                     "category": "Robotique · IA",
-                    "title": "Un nouveau robot humanoïde atteint un nouveau niveau d'autonomie en environnement complexe",
-                    "summary": "Une percée majeure vient d'être franchie dans l'intégration de modèles de fondation multimodaux directement dans l'embarqué d'un robot humanoïde. Cette avancée permet une adaptation dynamique en temps réel face à des objets non structurés sur les lignes d'assemblage industrielles. L'impact se traduit par une réduction drastique des temps de programmation manuelle pour les ingénieurs en automatisation.",
+                    "title": "Un nouveau robot humanoïde devient capable de travailler seul en usine",
+                    "summary": "Une grande avancée technique permet maintenant d'intégrer des cerveaux artificiels directement à l'intérieur des robots humanoïdes. Grâce à cela, le robot s'adapte tout seul et en direct face à des objets qui bougent ou qui sont mal rangés sur les lignes de montage de l'usine. Pour les ingénieurs en automatisation, cela change tout : il n'y a plus besoin de passer des heures à reprogrammer chaque geste du robot à la main. Le travail de production devient beaucoup plus souple, ce qui aide l'usine à fabriquer plus de produits sans avoir à tout casser et refaire dans l'atelier.",
                     "time": "Il y a 3 h",
                     "details": {
-                        "event": "Figure AI a présenté sa nouvelle architecture logicielle end-to-end couplée à une mise à jour matérielle majeure de ses actionneurs.",
-                        "context": "Jusqu'à présent, les robots industriels nécessitaient des programmes séquentiels rigides pour chaque nouvelle tâche, limitant leur déploiement à des environnements ultra-balisés.",
-                        "importance": "Cela démocratise l'utilisation de la robotique humanoïde flexible, permettant aux usines d'absorber des variations de production sans réingénierie complète des cellules de travail.",
+                        "event": "L'entreprise Figure AI a sorti un nouveau logiciel complet combiné avec de nouveaux moteurs plus puissants dans les bras et les jambes du robot.",
+                        "context": "Avant cette mise à jour, les robots d'usine étaient très rigides. Ils devaient suivre un plan informatique ultra-strict, ce qui bloquait leur utilisation dès qu'un objet changeait de place.",
+                        "importance": "Cette technologie rend enfin les robots humanoïdes utiles et faciles à installer dans n'importe quelle usine normale.",
                         "table": pd.DataFrame({
-                            "Élément": ["Entreprise", "Date", "Technologie", "Coût estimé", "Performance"],
-                            "Information": ["Figure AI", "30 août 2026", "Réseau de neurones VLA unifié", "Variables selon flotte", "+40% de cadence utile"]
+                            "Élément": ["Entreprise", "Date", "Technologie", "Coût", "Gain de vitesse"],
+                            "Information": ["Figure AI", "30 août 2026", "Cerveau artificiel unifié", "Variables selon la flotte", "+40% de rapidité utile"]
                         }),
-                        "impact": "Robotique : important\nIA : très important\nIndustrie : potentiellement disruptif",
-                        "futur": "Les analystes anticipent une phase de tests pilotes à grande échelle chez les constructeurs automobiles dès le prochain trimestre, ouvrant la voie à une commercialisation de masse.",
-                        "sources": ["IEEE Spectrum (8 min)", "TechCrunch (5 min)", "Communiqué officiel de l'entreprise"]
+                        "impact": "Robotique : très fort\nIA : majeur\nIndustrie : changement radical des méthodes de travail",
+                        "futur": "Les usines automobiles vont tester ces robots à grande échelle dès les prochains mois avant de lancer une vente partout dans le monde.",
+                        "sources": ["IEEE Spectrum - Article de fond (8 min)", "TechCrunch - Actualité technique (5 min)", "Communiqué officiel de l'entreprise"]
                     },
                     "related": [
-                        {"titre": "Comprendre le nouveau robot humanoïde et son architecture", "source": "IEEE Spectrum", "temps": "8 min", "raison": "Idéal pour saisir les choix technologiques sous-jacents sans jargon inutile."},
-                        {"titre": "Comment fonctionnent les robots humanoïdes modernes en usine ?", "source": "MIT Technology Review", "temps": "12 min", "raison": "Excellente mise en perspective de l'état actuel de l'industrie robotique."},
-                        {"titre": "L'entreprise annonce sa nouvelle génération de robots autonomes", "source": "Robotics Business", "temps": "5 min", "raison": "Permet de décortiquer l'annonce originale et les spécifications techniques de base."},
-                        {"titre": "L'état actuel de la robotique humanoïde en 2026", "source": "Wall Street Journal", "temps": "15 min", "raison": "Donne une perspective macro-économique globale sur les investissements du secteur."}
+                        {"titre": "Comprendre le nouveau robot humanoïde et son fonctionnement", "source": "IEEE Spectrum", "temps": "8 min", "raison": "Idéal pour voir comment le robot fonctionne sans utiliser de mots trop compliqués."},
+                        {"titre": "Comment les robots humanoïdes modernes travaillent en usine", "source": "MIT Technology Review", "temps": "12 min", "raison": "Donne une vue d'ensemble simple sur l'état actuel de la robotique dans le monde."},
+                        {"titre": "L'entreprise dévoile sa nouvelle génération de machines autonomes", "source": "Robotics Business", "temps": "5 min", "raison": "Permet de lire l'annonce de départ avec les chiffres de base."},
+                        {"titre": "Où en est la robotique humanoïde en 2026 ?", "source": "Wall Street Journal", "temps": "15 min", "raison": "Explique pourquoi les entreprises investissent autant d'argent là-dedans."}
                     ]
                 }
             ],
@@ -53,24 +55,24 @@ def show_system3():
                 {
                     "id": "monde_1",
                     "category": "🌎 Monde",
-                    "title": "Accord commercial international majeur signé pour sécuriser les chaînes d'approvisionnement en terres rares",
-                    "summary": "Plusieurs nations industrialisées ont ratifié un traité visant à mutualiser leurs stocks stratégiques et à subventionner le raffinage local. Cette décision vise à réduire la dépendance technologique vis-à-vis des monopoles asiatiques actuels. Les répercussions se feront sentir à court terme sur les coûts de fabrication des composants électroniques et des moteurs électriques.",
+                    "title": "Un grand accord international signé pour mieux partager les métaux rares",
+                    "summary": "Plusieurs grands pays industrialisés viennent de signer un traité pour mettre en commun leurs réserves de métaux rares et aider financièrement les usines qui les raffinent chez eux. Le but principal est de dépendre beaucoup moins d'un seul pays asiatique pour fabriquer les composants électroniques et les moteurs électriques. À brève échéance, cela devrait aider à stabiliser le prix de fabrication des ordinateurs, des téléphones et des voitures électriques partout en Occident.",
                     "time": "Il y a 5 h",
                     "details": {
-                        "event": "Signature d'un consortium multilatéral encadrant l'extraction, le transport et le raffinage des minéraux critiques pour la transition énergétique.",
-                        "context": "Les tensions géopolitiques répétées et les restrictions unilatérales sur l'exportation avaient provoqué des goulots d'étranglement sévères l'année précédente.",
-                        "importance": "Sécurise l'approvisionnement à long terme pour l'ensemble des industries manufacturières, de l'automobile à la haute technologie.",
+                        "event": "Création d'un groupe de travail international qui fixe des règles communes pour extraire, transporter et nettoyer les minéraux indispensables à l'industrie moderne.",
+                        "context": "Ces derniers mois, les disputes politiques et les blocages sur les exportations avaient créé de grosses pénuries dans les chaînes d'approvisionnement des usines.",
+                        "importance": "Cela protège durablement toutes les industries de haute technologie contre de futures ruptures de stock mondiales.",
                         "table": pd.DataFrame({
-                            "Élément": ["Secteur touché", "Date", "Pays signataires", "Impact budgétaire"],
-                            "Information": ["Haute technologie et Énergie", "30 août 2026", "14 nations", "12 milliards de subventions croisées"]
+                            "Élément": ["Secteur touché", "Date", "Pays participants", "Aide financière"],
+                            "Information": ["Haute technologie et Énergie", "30 août 2026", "14 nations", "12 milliards de subventions partagées"]
                         }),
-                        "impact": "Géopolitique : majeur\nÉconomie internationale : très important\nIndustrie : stabilisateur critique",
-                        "futur": "Mise en place d'organismes de régulation conjoints pour valider les nouveaux sites de raffinage dès l'an prochain.",
-                        "sources": ["Reuters (6 min)", "Financial Times (10 min)"]
+                        "impact": "Politique mondiale : très important\nÉconomie : stabilisateur fort\nUsines : sécurité garantie",
+                        "futur": "Mise en place de comités de contrôle pour valider les nouveaux centres de raffinage dès l'année prochaine.",
+                        "sources": ["Reuters - Dépêche économique (6 min)", "Financial Times - Analyse globale (10 min)"]
                     },
                     "related": [
-                        {"titre": "La géopolitique des minéraux critiques en 2026", "source": "Foreign Affairs", "temps": "10 min", "raison": "Analyse géostratégique complète des tensions d'approvisionnement."},
-                        {"titre": "Impacts de l'accord sur l'industrie manufacturière occidentale", "source": "Bloomberg", "temps": "7 min", "raison": "Décryptage des coûts pour les chaînes de montage."}
+                        {"titre": "La guerre des métaux rares en 2026", "source": "Foreign Affairs", "temps": "10 min", "raison": "Explique clairement les tensions politiques derrière les chaînes d'approvisionnement."},
+                        {"titre": "Ce que change cet accord pour les usines occidentales", "source": "Bloomberg", "temps": "7 min", "raison": "Détaille l'impact direct sur les coûts de fabrication."}
                     ]
                 }
             ],
@@ -78,24 +80,24 @@ def show_system3():
                 {
                     "id": "can_1",
                     "category": "🇨🇦 Canada",
-                    "title": "Ottawa dévoile son nouveau cadre réglementaire pour accélérer les grands projets énergétiques",
-                    "summary": "Le gouvernement fédéral a annoncé une refonte majeure des processus d'évaluation d'impact afin de réduire les délais administratifs pour les infrastructures propres. Le plan cible en priorité les corridors de transport d'électricité interprovinciaux et les sites de production d'hydrogène vert. Les milieux économiques saluent un virage pragmatique face aux retards structurels passés.",
+                    "title": "Ottawa simplifie les règles pour faire avancer plus vite les projets d'énergie propre",
+                    "summary": "Le gouvernement fédéral canadien a décidé de changer ses méthodes d'évaluation pour faire perdre moins de temps aux grands projets d'infrastructure écologique. Le plan vise en premier lieu les lignes de transport d'électricité qui passent d'une province à l'autre ainsi que les usines d'hydrogène vert. Les gens d'affaires applaudissent ce changement, car les anciens délais administratifs bloquaient inutilement l'argent des investisseurs depuis des années.",
                     "time": "Il y a 4 h",
                     "details": {
-                        "event": "Publication du décret fédéral instaurant des guichets uniques d'approbation pour les projets d'intérêt national prioritaire.",
-                        "context": "Les délais d'approbation réglementaire au Canada étaient devenus l'un des principaux freins aux investissements privés en infrastructures lourdes.",
-                        "importance": "Accélère la transition énergétique et stimule l'investissement industriel domestique grâce à une prévisibilité accrue.",
+                        "event": "Signature d'un décret fédéral qui crée un guichet unique d'autorisation pour valider plus rapidement les projets industriels d'importance nationale.",
+                        "context": "Le Canada était reconnu pour sa lenteur administrative terrible, ce qui décourageait les entreprises privées de lancer de grands travaux d'infrastructure.",
+                        "importance": "Permet de construire plus vite les réseaux d'énergie dont le pays a besoin tout en stimulant l'économie locale.",
                         "table": pd.DataFrame({
-                            "Élément": ["Juridiction", "Date", "Cible principale", "Réduction de délai visée"],
-                            "Information": ["Fédéral (Canada)", "30 août 2026", "Corridors énergétiques", "Jusqu'à 50% de réduction"]
+                            "Élément": ["Gouvernement", "Date", "Cible prioritaire", "Gain de temps visé"],
+                            "Information": ["Fédéral (Canada)", "30 août 2026", "Lignes d'énergie et transport", "Jusqu'à 50% de délai en moins"]
                         }),
-                        "impact": "Politique fédérale : important\nÉnergie : majeur\nÉconomie canadienne : positif",
-                        "futur": "Négociations serrées attendues avec les provinces pour harmoniser les normes environnementales locales.",
+                        "impact": "Politique fédérale : très positif\nÉnergie : grand accélérateur\nÉconomie : stimulant",
+                        "futur": "Discussions ardues à venir avec les provinces pour s'assurer que les lois locales s'accordent bien avec ce nouveau système.",
                         "sources": ["The Globe and Mail (7 min)", "Radio-Canada Économie (5 min)"]
                     },
                     "related": [
-                        {"titre": "Les défis de l'infrastructure énergétique canadienne", "source": "The Globe and Mail", "temps": "9 min", "raison": "Comprendre les goulets d'étranglement historiques du réseau."},
-                        {"titre": "Analyse du nouveau guichet unique fédéral", "source": "Financial Post", "temps": "6 min", "raison": "Vue d'ensemble des réactions du milieu des affaires."}
+                        {"titre": "Les problèmes du réseau électrique canadien", "source": "The Globe and Mail", "temps": "9 min", "raison": "Montre pourquoi les réformes étaient devenues urgentes."},
+                        {"titre": "Analyse du nouveau guichet unique d'Ottawa", "source": "Financial Post", "temps": "6 min", "raison": "Résumé des réactions du milieu des affaires."}
                     ]
                 }
             ],
@@ -103,24 +105,24 @@ def show_system3():
                 {
                     "id": "que_1",
                     "category": "⚜️ Québec",
-                    "title": "Hydro-Québec lance un vaste chantier technologique pour optimiser ses postes de transformation",
-                    "summary": "La société d'État amorce le déploiement massif de capteurs intelligents et de systèmes de contrôle décentralisés sur l'ensemble de son réseau de transport. Ce projet vise à maximiser la capacité de transit sans nécessiter la construction immédiate de nouvelles lignes à haute tension. Cette modernisation s'inscrit directement dans la stratégie de gestion rigoureuse de la puissance de pointe.",
+                    "title": "Hydro-Québec lance un grand plan technologique pour moderniser ses postes électriques",
+                    "summary": "La société d'État commence à installer partout des capteurs intelligents et des petits ordinateurs de contrôle à distance sur l'ensemble de ses lignes de transport. Le but est de faire passer plus d'électricité dans les fils existants sans être obligé de bâtir tout de suite de nouvelles tours à haute tension. Cette modernisation aide directement à mieux gérer les périodes de grand froid où les gens consomment un maximum de courant.",
                     "time": "Il y a 2 h",
                     "details": {
-                        "event": "Attribution de contrats majeurs d'intégration de systèmes IIoT pour automatiser la surveillance thermique et électrique des sous-stations.",
-                        "context": "La croissance de la demande industrielle et résidentielle exerce une pression constante sur les marges de réserve du réseau québécois.",
-                        "importance": "Permet d'absorber une plus grande charge industrielle sans compromettre la stabilité globale du réseau électrique provincial.",
+                        "event": "Signature de contrats importants avec des entreprises technologiques pour surveiller en direct la chaleur et le courant dans les postes de transformation.",
+                        "context": "La consommation d'électricité des usines et des maisons ne cesse de grimper, ce qui laisse peu de marge de sécurité au réseau québécois.",
+                        "importance": "Permet de brancher de nouvelles industries sans risquer de provoquer des pannes générales sur le réseau.",
                         "table": pd.DataFrame({
-                            "Élément": ["Maître d'œuvre", "Date", "Budget alloué", "Technologie"],
-                            "Information": ["Hydro-Québec", "30 août 2026", "450 millions de dollars", "Réseaux maillés intelligents et IoT"]
+                            "Élément": ["Promoteur", "Date", "Enveloppe budgétaire", "Technologie utilisée"],
+                            "Information": ["Hydro-Québec", "30 août 2026", "450 millions de dollars", "Objets connectés et réseaux intelligents"]
                         }),
-                        "impact": "Hydro-Québec : majeur\nÉconomie québécoise : très important\nAutomatisation : hautement pertinent",
-                        "futur": "Intégration graduelle de modèles prédictifs basés sur l'intelligence artificielle pour anticiper les pannes d'équipement.",
+                        "impact": "Hydro-Québec : stratégique\nÉconomie du Québec : majeur\nTechnologie : très utile",
+                        "futur": "Ajout progressif de programmes informatiques capables de deviner à l'avance quand une pièce risque de briser.",
                         "sources": ["La Presse (6 min)", "Le Devoir (5 min)"]
                     },
                     "related": [
-                        {"titre": "Comment les réseaux intelligents transforment la distribution d'électricité", "source": "La Presse", "temps": "6 min", "raison": "Explication claire des enjeux de modernisation du réseau québécois."},
-                        {"titre": "Le plan d'action d'Hydro-Québec face aux nouveaux défis industriels", "source": "Les Affaires", "temps": "8 min", "raison": "Analyse des besoins énergétiques futurs de la province."}
+                        {"titre": "Comment les réseaux intelligents transforment l'électricité", "source": "La Presse", "temps": "6 min", "raison": "Explique simplement la modernisation du réseau québécois."},
+                        {"titre": "Le plan d'action d'Hydro-Québec face à la forte demande", "source": "Les Affaires", "temps": "8 min", "raison": "Détaille les besoins en énergie des usines de la province."}
                     ]
                 }
             ],
@@ -128,24 +130,24 @@ def show_system3():
                 {
                     "id": "rob_1",
                     "category": "🤖 Robotique",
-                    "title": "Standardisation accrue des piles logicielles ROS2 dans les flottes de robots mobiles autonomes",
-                    "summary": "Un consortium international d'intégrateurs industriels a publié un nouveau profil de référence pour l'interopérabilité des robots mobiles en milieu manufacturier. L'adoption généralisée de ROS2 et des ponts de communication temps réel simplifie considérablement le déploiement de flottes hétérogènes. Cette normalisation réduit les coûts d'intégration et accélère le retour sur investissement pour les usines intelligentes.",
+                    "title": "Les usines adoptent un langage informatique commun pour faire communiquer leurs robots",
+                    "summary": "Un grand groupe d'experts internationaux vient de publier un standard officiel pour relier ensemble des robots mobiles de marques différentes dans une même usine. Grâce à cette entente sur le système ROS2, il devient beaucoup plus simple de faire travailler des machines de fabricants variés sans passer des semaines à coder des programmes de liaison. Cela réduit fortement les frais d'installation et permet aux usines intelligentes de démarrer beaucoup plus vite.",
                     "time": "Il y a 6 h",
                     "details": {
-                        "event": "Officialisation des spécifications techniques unifiées pour la gestion de flotte multi-marques sous environnement ROS2.",
-                        "context": "Les usines devaient jusqu'à présent maintenir des couches logicielles propriétaires complexes pour faire communiquer des robots de fabricants différents.",
-                        "importance": "Ouvre la voie à une modularité complète des lignes de production automatisées et facilite la maintenance prédictive.",
+                        "event": "Publication des spécifications techniques mondiales pour unifier la gestion des flottes de robots sous environnement ROS2.",
+                        "context": "Jusqu'à présent, chaque marque de robot utilisait son propre langage fermé, rendant impossible la communication entre des machines de fabricants différents.",
+                        "importance": "Apporte une flexibilité totale aux chaînes de montage et facilite grandement la maintenance de l'équipement.",
                         "table": pd.DataFrame({
-                            "Élément": ["Cadre technique", "Date", "Secteur", "Gain d'intégration"],
-                            "Information": ["ROS2 / Middleware industriel", "30 août 2026", "Logistique et assemblage", "-40% de temps de mise en service"]
+                            "Élément": ["Standard technique", "Date", "Domaine", "Économie de temps"],
+                            "Information": ["ROS2 / Logiciel industriel", "30 août 2026", "Logistique d'usine", "-40% de temps d'installation"]
                         }),
-                        "impact": "Robotique mobile : majeur\nROS2 : critique\nAutomatisation industrielle : structurant",
-                        "futur": "Adoption progressive par les grands équipementiers automobiles et pharmaceutiques mondiaux au cours des prochains semestres.",
+                        "impact": "Robotique mobile : majeur\nROS2 : incontournable\nUsines : gain de temps énorme",
+                        "futur": "Utilisation massive de ce standard par les grands constructeurs automobiles et pharmaceutiques mondiaux dès l'an prochain.",
                         "sources": ["Robotics Tomorrow (5 min)", "Automation World (7 min)"]
                     },
                     "related": [
-                        {"titre": "Guide pratique de migration vers les architectures ROS2 industrielles", "source": "IEEE Robotics", "temps": "14 min", "raison": "Référence technique incontournable pour les ingénieurs en robotique."},
-                        {"titre": "L'interopérabilité des flottes de robots en milieu fermé", "source": "Control Engineering", "temps": "8 min", "raison": "Analyse des gains opérationnels constatés sur le terrain."}
+                        {"titre": "Guide simple pour passer aux logiciels ROS2 en usine", "source": "IEEE Robotics", "temps": "14 min", "raison": "La référence technique de base pour les ingénieurs en robotique."},
+                        {"titre": "Comment faire coopérer des robots de marques différentes", "source": "Control Engineering", "temps": "8 min", "raison": "Explique les gains réels mesurés sur le terrain par les usines."}
                     ]
                 }
             ],
@@ -153,30 +155,30 @@ def show_system3():
                 {
                     "id": "eco_1",
                     "category": "💰 Économie",
-                    "title": "La Banque du Canada signale une stabilisation durable de l'inflation dans la cible de 2 pour cent",
-                    "summary": "Dans sa dernière allocution, la gouvernance de la banque centrale a confirmé que les pressions sur les prix se sont normalisées à travers la plupart des secteurs de l'économie. Cette situation offre une marge de manœuvre accrue pour ajuster la politique monétaire sans secouer les marchés de l'emploi. Les analystes prévoient une consolidation de la confiance des investisseurs et des consommateurs pour la rentrée.",
+                    "title": "La Banque du Canada confirme que la hausse des prix est enfin rentrée dans l'ordre",
+                    "summary": "Dans son dernier rapport, la banque centrale a annoncé que l'inflation est revenue s'établir solidement autour de sa cible idéale de 2 pour cent. Cette bonne nouvelle signifie que la vie quotidienne devient plus prévisible et que le coût de la vie ne s'emballe plus de façon anormale. Pour les familles comme pour les entreprises, cela offre un climat beaucoup plus stable pour planifier les budgets et les achats importants des prochains mois.",
                     "time": "Il y a 1 h",
                     "details": {
-                        "event": "Rapport trimestriel de politique monétaire confirmant l'ancrage des anticipations d'inflation au pays.",
-                        "context": "Plusieurs trimestres de hausses successives des taux directeurs avaient été nécessaires pour refroidir la surchauffe post-pandémique.",
-                        "importance": "Donne de la visibilité aux entreprises pour planifier leurs investissements en capital et leurs budgets de développement.",
+                        "event": "Publication du rapport trimestriel qui montre que la hausse générale des prix a ralenti et s'est stabilisée au pays.",
+                        "context": "Il a fallu traverser plusieurs années de fortes hausses des taux directeurs pour réussir à calmer la surchauffe économique qui a suivi la pandémie.",
+                        "importance": "Redonne de la confiance aux chefs d'entreprise pour investir et créer de nouveaux emplois au pays.",
                         "table": pd.DataFrame({
-                            "Élément": ["Indicateur", "Date", "Taux actuel", "Tendance"],
-                            "Information": ["IPC Global Canada", "30 août 2026", "2.1 %", "Stable / Neutre"]
+                            "Élément": ["Indicateur", "Date", "Chiffre actuel", "Tendance"],
+                            "Information": ["Inflation au Canada", "30 août 2026", "2.1 %", "Stable et calme"]
                         }),
-                        "impact": "Banque du Canada : neutre à positif\nTaux d'intérêt : stabilisation\nDollar canadien : résilient",
-                        "futur": "Statu quo probable des taux directeurs lors de la prochaine réunion plénière de la banque centrale.",
+                        "impact": "Banque centrale : rassurant\nTaux d'intérêt : stabilisés\nDollar canadien : solide",
+                        "futur": "La banque centrale devrait laisser ses taux de base tranquilles lors de sa prochaine rencontre officielle.",
                         "sources": ["Financial Post (5 min)", "La Presse Économie (6 min)"]
                     },
                     "related": [
-                        {"titre": "Comprendre la dynamique de l'inflation et des taux au Canada", "source": "Banque du Canada (Note)", "temps": "6 min", "raison": "Document de référence officiel vulgarisé."},
-                        {"titre": "Impacts de la stabilisation des prix sur les marchés financiers", "source": "Bloomberg Canada", "temps": "8 min", "raison": "Perspectives pour les investisseurs institutionnels et particuliers."}
+                        {"titre": "Comprendre l'inflation et les taux d'intérêt au Canada", "source": "Banque du Canada (Note)", "temps": "6 min", "raison": "Un document officiel très simple pour tout comprendre."},
+                        {"titre": "Ce que change la fin de l'inflation pour vos finances", "source": "Bloomberg Canada", "temps": "8 min", "raison": "Analyse claire pour les épargnants et les investisseurs."}
                     ]
                 }
             ]
         }
 
-    # --- 2. MODALS DÉTAILLÉES ---
+    # --- 2. FENÊTRES CONTEXTUELLES (MODALS DÉTAILLÉES) ---
     @st.dialog("📖 Fiche d'Analyse Détaillée", width="large")
     def show_full_details(item):
         det = item["details"]
@@ -186,50 +188,47 @@ def show_system3():
         st.markdown("### 🧠 Ce qui s'est réellement passé")
         st.write(det["event"])
         
-        st.markdown("### 📅 Contexte")
+        st.markdown("### 📅 Le Contexte")
         st.write(det["context"])
         
-        st.markdown("### 🔍 Pourquoi c'est important")
+        st.markdown("### 🔍 Pourquoi c'est important pour vous")
         st.write(det["importance"])
         
-        st.markdown("### 📊 Données importantes")
+        st.markdown("### 📊 Les Chiffres Clés")
         st.dataframe(det["table"], hide_index=True, use_container_width=True)
         
-        st.markdown("### 🌎 Impact")
+        st.markdown("### 🌎 Les Impacts Concrets")
         st.text(det["impact"])
         
-        st.markdown("### 🔮 Et ensuite ?")
+        st.markdown("### 🔮 Qu'est-ce qui va se passer ensuite ?")
         st.write(det["futur"])
         
-        st.markdown("### 📰 Sources")
+        st.markdown("### 📰 Pour aller plus loin (Sources)")
         for src in det["sources"]:
             st.markdown(f"- {src}")
 
     @st.dialog("📰 Articles Reliés pour Approfondir", width="large")
     def show_related_articles_modal(item):
         st.subheader(f"Dossier de lecture : {item['title']}")
-        st.write("Sélection d'articles recommandés pour comprendre le sujet en profondeur, adaptés même aux débutants :")
+        st.write("Voici une sélection d'articles faciles à lire pour comprendre le sujet en profondeur, même si vous débutez :")
         
         for i, art in enumerate(item["related"], 1):
             with st.container(border=True):
                 st.markdown(f"#### {i}. {art['titre']}")
                 st.caption(f"📍 {art['source']} — ⏱️ {art['temps']} de lecture")
-                st.write(f"**Pourquoi cet article est intéressant :** {art['raison']}")
-                st.button("Consulter l'article original ↗", key=f"read_src_{item['id']}_{i}")
+                st.write(f"**Pourquoi lire cet article :** {art['raison']}")
+                st.button("Lire l'article original ↗", key=f"read_src_{item['id']}_{i}")
 
-    # --- 3. INTERFACE DU SYSTÈME 3 ---
-    if st.button("← Retour au tableau de bord"):
-        st.session_state["current_page"] = "Accueil"
-        st.rerun()
+    # --- 3. NAVIGATION PAR ONGLETS EN HAUT (STYLE BOURSE) ---
+    tabs = st.tabs(["🏠 Accueil", "⚙️ Personnaliser", "📈 Portefeuille"])
 
-    sub_page = st.sidebar.radio("Navigation Système 3", ["🏠 Actualités", "⚙️ Personnaliser", "📈 Portefeuille"], key="s3_nav")
-
-    if sub_page == "🏠 Actualités":
-        st.title("MON BRIEFING")
-        st.caption("30 août 2026")
+    # --- ONGLET 1 : ACCUEIL ---
+    with tabs[0]:
+        st.title("MON BRIEFING QUOTIDIEN")
+        st.caption("Mise à jour : 30 août 2026")
         st.divider()
         
-        st.header("🔥 À RETENIR")
+        st.header("🔥 LE SUJET MAJEUR DU JOUR")
         for top_item in st.session_state.news_database["top"]:
             with st.container(border=True):
                 st.subheader(f"🤖 {top_item['title']}")
@@ -273,58 +272,75 @@ def show_system3():
             
             st.write("")
 
-        st.header("📈 INVESTISSEMENTS")
+        st.header("📈 ACTUALITÉS DE VOTRE PORTEFEUILLE")
         st.markdown("---")
-        st.caption("Actualités connectées directement aux actions configurées dans votre portefeuille.")
+        st.caption("Actualités connectées directement aux vrais titres que vous possédez (AAPL, CGNT.V, NVDA, ROBO).")
         
+        # Actualités basées sur le vrai portefeuille utilisateur (AAPL, CGNT.V, NVDA, ROBO)
         portfolio_news = [
             {
-                "ticker": "XEQT",
-                "title": "XEQT : Résilience des marchés mondiaux face aux variations de taux",
-                "summary": "L'ETF diversifié mondial maintient une excellente tenue grâce à l'équilibre de ses positions géographiques et sectorielles, offrant un profil de rendement stable aux investisseurs à long terme.",
+                "ticker": "AAPL",
+                "title": "AAPL : Apple intègre de nouvelles fonctions d'intelligence artificielle sur ses appareils",
+                "summary": "Apple vient de présenter une mise à jour importante de ses logiciels qui renforce l'utilisation de l'intelligence artificielle directement sur les téléphones et les ordinateurs. Cette nouveauté simplifie la vie des usagers au quotidien tout en protégeant mieux leurs données personnelles. Pour les investisseurs, cela stimule la demande pour les nouveaux modèles d'appareils et consolide la position de l'entreprise sur le marché technologique mondial.",
                 "time": "Il y a 3 h",
                 "details": {
-                    "event": "Analyse de la performance trimestrielle des composantes majeurs de l'indice global.",
-                    "context": "La diversification géographique reste la meilleure protection contre la volatilité locale.",
-                    "importance": "Confirme la pertinence d'une détention indicielle à large spectre.",
-                    "table": pd.DataFrame({"Métrique": ["Rendement YTD", "Volatilité"], "Valeur": ["+8.4%", "Faible"]}),
-                    "impact": "Portefeuille global : Stable et diversifié",
-                    "futur": "Poursuite de la stratégie d'accumulation passive recommandée.",
-                    "sources": ["Morningstar Canada", "Financial Post"]
+                    "event": "Lancement d'une suite de fonctions intelligentes embarquées optimisant la rapidité d'exécution et la confidentialité.",
+                    "context": "La concurrence est très forte dans le domaine de l'intelligence artificielle pour mobile, obligeant Apple à se démarquer par la sécurité.",
+                    "importance": "Encourage le renouvellement du matériel chez les consommateurs et sécurise les revenus de l'entreprise.",
+                    "table": pd.DataFrame({"Métrique": ["Secteur", "Impact ventes"], "Valeur": ["Appareils mobiles", "Hausse de la demande"]}),
+                    "impact": "Action AAPL : Solide et rassurante",
+                    "futur": "Suivi attentif des chiffres de vente lors de la sortie des prochains produits en magasin.",
+                    "sources": ["Bloomberg Tech", "Wall Street Journal"]
                 },
-                "related": [{"titre": "Pourquoi garder le cap sur les ETF mondiaux", "source": "Journal des Investisseurs", "temps": "5 min", "raison": "Rappel des principes de gestion indicielle."}]
+                "related": [{"titre": "La stratégie d'Apple dans l'intelligence artificielle", "source": "TechCrunch", "temps": "6 min", "raison": "Explication claire des choix technologiques de l'entreprise."}]
             },
             {
-                "ticker": "SHOP",
-                "title": "SHOP : Nouvelle mise à jour de l'écosystème marchand et intégration logistique",
-                "summary": "Shopify déploie de nouvelles fonctionnalités d'automatisation des stocks pour ses marchands, renforçant son avantage concurrentiel dans le commerce en ligne transfrontalier.",
-                "time": "Il y a 4 h",
+                "ticker": "CGNT.V",
+                "title": "CGNT.V : Cognetivity avance dans l'application médicale de sa technologie cognitive",
+                "summary": "L'entreprise Cognetivity Neurosciences poursuit le déploiement de sa plateforme numérique d'évaluation de la santé cérébrale dans plusieurs cliniques partenaires. Cette solution aide les professionnels de la santé à repérer plus rapidement les troubles cognitifs grâce à des tests sur tablette simples et rapides. Les marchés surveillent de près l'adoption de cet outil par le réseau médical.",
+                "time": "Il y a 5 h",
                 "details": {
-                    "event": "Lancement d'outils de gestion intelligente des flux de marchandises pour les boutiques à fort volume.",
-                    "context": "La saison des achats de fin d'année approche, poussant la plateforme à optimiser son infrastructure.",
-                    "importance": "Soutient la croissance du volume brut de marchandises (GMV).",
-                    "table": pd.DataFrame({"Métrique": ["Hausse d'adoption", "Impact opérationnel"], "Valeur": ["+15%", "Réduction des frictions logistiques"]}),
-                    "impact": "Action SHOP : Potentiel haussier à moyen terme",
-                    "futur": "Surveillance des volumes transactionnels lors du prochain trimestre.",
-                    "sources": ["TechCrunch", "Bloomberg Tech"]
+                    "event": "Signature de nouvelles ententes de distribution pour intégrer l'outil d'évaluation dans des cliniques spécialisées.",
+                    "context": "Le vieillissement de la population pousse le secteur médical à chercher des solutions technologiques pour dépister plus tôt les problèmes de mémoire.",
+                    "importance": "Valide l'utilité clinique du produit et favorise son expansion commerciale à l'international.",
+                    "table": pd.DataFrame({"Métrique": ["Domaine", "Statut commercial"], "Valeur": ["Santé numérique", "Expansion des cliniques"]}),
+                    "impact": "Action CGNT.V : Potentiel de croissance lié au secteur médical",
+                    "futur": "Évaluation des retombées des nouveaux contrats signés dans le réseau de la santé.",
+                    "sources": ["Stockwatch", "Financial Post Med"]
                 },
-                "related": [{"titre": "L'expansion logistique de Shopify", "source": "TechCrunch", "temps": "6 min", "raison": "Analyse de la stratégie de logistique intégrée."}]
+                "related": [{"titre": "L'innovation dans le dépistage de la santé mentale", "source": "Medical News Today", "temps": "5 min", "raison": "Comprendre l'utilité des tests cognitifs numériques."}]
             },
             {
                 "ticker": "NVDA",
-                "title": "NVDA : Partenariat élargi avec les fabricants de systèmes robotiques autonomes",
-                "summary": "Nvidia annonce l'optimisation de sa plateforme matérielle pour le traitement en temps réel des modèles de vision par ordinateur appliqués à la robotique mobile.",
+                "title": "NVDA : Nvidia lance de nouveaux puces graphiques ultra-rapides pour les serveurs d'IA",
+                "summary": "Nvidia a dévoilé une nouvelle génération de puces informatiques conçues spécialement pour faire tourner les modèles d'intelligence artificielle les plus lourds. Ces processeurs offrent une puissance de calcul décuplée tout en consommant moins d'électricité par opération. Les plus grands centres de données du monde entier se bousculent pour s'en procurer.",
                 "time": "Il y a 2 h",
                 "details": {
-                    "event": "Présentation des nouveaux kits de développement pour puces embarquées à haute efficacité énergétique.",
-                    "context": "L'explosion de la demande en robotique humanoïde et industrielle nécessite des processeurs ultra-performants en bordure de réseau.",
-                    "importance": "Positionne l'entreprise au cœur de la chaîne de valeur de la robotique intelligente.",
-                    "table": pd.DataFrame({"Métrique": ["Nouveau processeur", "Gain énergétique"], "Valeur": ["Plateforme Thor", "3x plus efficace"]}),
-                    "impact": "Action NVDA : Position dominante confirmée dans l'IA physique",
-                    "futur": "Livraisons massives prévues pour les constructeurs de robots partenaires.",
+                    "event": "Présentation officielle de la nouvelle architecture de puces graphiques pour serveurs informatiques.",
+                    "context": "La demande mondiale en serveurs d'intelligence artificielle explose, ce qui pousse Nvidia à innover sans cesse pour garder son avance.",
+                    "importance": "Maintient l'entreprise au sommet de la chaîne de fabrication des technologies d'intelligence artificielle.",
+                    "table": pd.DataFrame({"Métrique": ["Performance", "Efficacité"], "Valeur": ["3x plus rapide", "Moins énergivore"]}),
+                    "impact": "Action NVDA : Position dominante confirmée",
+                    "futur": "Livraisons massives prévues pour les grands géants du web au cours du prochain trimestre.",
                     "sources": ["Reuters", "EE Times"]
                 },
-                "related": [{"titre": "L'offensive de Nvidia dans l'IA physique et la robotique", "source": "IEEE Spectrum", "temps": "7 min", "raison": "Comprendre l'extension du marché adressable de l'entreprise."}]
+                "related": [{"titre": "La domination de Nvidia dans les puces d'IA", "source": "IEEE Spectrum", "temps": "7 min", "raison": "Explique pourquoi les puces de l'entreprise sont si indispensables."}]
+            },
+            {
+                "ticker": "ROBO",
+                "title": "ROBO : L'ETF mondial de la robotique profite de la modernisation des usines",
+                "summary": "Le fonds négocié en bourse ROBO enregistre de bons résultats grâce à l'automatisation accélérée des chaînes de fabrication à travers le monde. Les entreprises manufacturières investissent massivement dans les robots intelligents et les capteurs pour compenser le manque de main-d'œuvre. Ce fonds diversifié permet de suivre l'ensemble de cette industrie en pleine transformation.",
+                "time": "Il y a 4 h",
+                "details": {
+                    "event": "Analyse de la performance des entreprises qui composent le fonds spécialisé en robotique et automatisation.",
+                    "context": "La recherche de productivité pousse les usines à automatiser toutes leurs tâches répétitives.",
+                    "importance": "Offre une exposition sécuritaire et diversifiée à l'ensemble du secteur de la robotique industrielle.",
+                    "table": pd.DataFrame({"Métrique": ["Type de placement", "Secteur cible"], "Valeur": ["ETF indiciel diversifié", "Robotique et Automatisation"]}),
+                    "impact": "Action ROBO : Croissance stable portée par l'industrie",
+                    "futur": "Poursuite de la demande en équipements robotisés dans les secteurs de l'automobile et de l'électronique.",
+                    "sources": ["Morningstar", "ETF Daily News"]
+                },
+                "related": [{"titre": "Pourquoi investir dans la robotique et l'automatisation", "source": "Journal des Investisseurs", "temps": "5 min", "raison": "Rappelle les avantages d'un fonds indiciel spécialisé."}]
             }
         ]
         
@@ -340,9 +356,10 @@ def show_system3():
                 if b2.button("📰 Articles reliés", key=f"rel_stock_{stock['ticker']}"):
                     show_related_articles_modal(stock)
 
-    elif sub_page == "⚙️ Personnaliser":
+    # --- ONGLET 2 : PERSONNALISER ---
+    with tabs[1]:
         st.title("⚙️ PERSONNALISATION")
-        st.write("Ajustez vos catégories et gérez vos intérêts de veille.")
+        st.write("Ajustez vos catégories et gérez vos intérêts de veille selon vos goûts.")
         st.divider()
         
         new_cat_input = st.text_input("Ajouter une catégorie (ex: 🧬 Santé)")
@@ -374,14 +391,15 @@ def show_system3():
                 if clean_interests != st.session_state.categories[cat]:
                     st.session_state.categories[cat] = clean_interests
 
-    elif sub_page == "📈 Portefeuille":
-        st.title("📈 PORTEFEUILLE")
-        st.write("Gestion de vos titres actifs connectés au système de veille.")
+    # --- ONGLET 3 : PORTEFEUILLE ---
+    with tabs[2]:
+        st.title("📈 VOTRE PORTEFEUILLE")
+        st.write("Voici la liste complète des vrais titres financiers que vous possédez dans votre portefeuille d'investissement :")
         st.divider()
         
         for ticker, data in st.session_state.portfolio.items():
             with st.container(border=True):
                 st.subheader(f"{ticker} — {data['nom']}")
-                st.write(f"Actions détenues : {data['shares']}")
+                st.write(f"Actions détenues : **{data['shares']}**")
         
-        st.info("Le portefeuille est synchronisé automatiquement avec la section Investissements de votre page d'accueil.")
+        st.info("💡 Ces titres sont automatiquement reliés à la section des actualités boursières de votre page d'accueil pour suivre vos investissements en temps réel.")
