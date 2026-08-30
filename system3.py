@@ -1,594 +1,544 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import yfinance as yf
-import plotly.express as px
-import re
-import json
-from datetime import datetime, timedelta
-from google import genai
-from database import load_stock_transactions, add_stock_transaction, delete_stock_transaction
+from datetime import datetime
 
-# --- CONFIGURATION IA (GEMINI) ---
-secrets = st.secrets
-if "GEMINI_API_KEY" in secrets:
-    client = genai.Client(api_key=secrets["GEMINI_API_KEY"])
-else:
-    client = None
-
-def call_flash_ai(prompt):
-    if not client: return "Erreur : Clé API Gemini manquante."
-    try:
-        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        return response.text
-    except Exception as e: return f"Erreur IA Flash : {str(e)}"
-
-def call_pro_ai(prompt):
-    if not client: return "Erreur : Clé API Gemini manquante."
-    try:
-        config = {"temperature": 0.0}
-        response = client.models.generate_content(model="gemini-3.1-pro", contents=prompt, config=config)
-        return response.text
-    except Exception as e:
-        try:
-            config = {"temperature": 0.0}
-            response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt, config=config)
-            return response.text + "\n\n*(Note : Basculé sur Flash suite à la limite du modèle Pro)*"
-        except Exception as e2:
-            return f"Erreur IA Pro/Flash : {str(e2)}"
-
-def get_ai_analysis(ticker, price, pct, rsi, drawdown):
-    prompt = f"Analyse très courte du titre {ticker}. Prix: {price:.2f}$ ({pct:.2f}%), RSI: {rsi:.1f}, Baisse depuis le sommet (Drawdown): {drawdown:.1f}%. Tendance actuelle et conseil rapide."
-    return call_flash_ai(prompt)
-
-def get_macro_analysis(portfolio_data):
-    prompt = f"Voici mon portefeuille boursier et ses métriques : {portfolio_data}. Fais un résumé global en 3-4 lignes maximum. Dis-moi ce qui est à risque (ex: RSI élevé, gros drawdown) et ce qui semble prêt à monter."
-    return call_flash_ai(prompt)
-
-def get_canadian_radar_tickers(sector):
-    if not client: return []
-    prompt = f"Donne-moi 10 actions canadiennes du secteur '{sector}'. UTILISE UNIQUEMENT DES TICKERS FINISSANT PAR .TO OU .V. Cherche des entreprises avec un bon potentiel à moyen terme. Réponds par une liste simple de symboles séparés par des virgules."
-    try:
-        response = client.models.generate_content(model="gemini-3.6-flash", contents=prompt)
-        tickers = re.findall(r'\b[A-Z0-9-]+\.(?:TO|V)\b', response.text)
-        return list(set(tickers))
-    except Exception: return []
-
-def get_radar_explanation(ticker, sector):
-    prompt = f"Analyse l'action canadienne {ticker} (secteur: {sector}) pour un investissement à moyen terme. 1) Explique concrètement pourquoi c'est un bon achat potentiel. 2) Évalue le niveau de risque en donnant un pourcentage clair (ex: 'Risque : 55%') et explique pourquoi. 3) Donne la perspective de croissance."
-    return call_flash_ai(prompt)
-
-def calculate_rsi(series, period=14):
-    if len(series) < period: return 50.0
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
-    rs = avg_gain / avg_loss
-    return (100 - (100 / (1 + rs))).iloc[-1]
-
-def get_stop_loss_atr(ticker_symbol):
-    try:
-        stock = yf.Ticker(ticker_symbol)
-        hist = stock.history(period="3mo")
-        if hist.empty or len(hist) < 14:
-            return None
-        high = hist['High']
-        low = hist['Low']
-        close = hist['Close']
-        tr = np.maximum(high - low, np.maximum(abs(high - close.shift(1)), abs(low - close.shift(1))))
-        atr = tr.rolling(14).mean().iloc[-1]
-        current_price = close.iloc[-1]
-        sl = current_price - (2 * atr)
-        return sl if sl > 0 else current_price * 0.9
-    except Exception:
-        return None
-
-def get_technical_metrics(ticker_symbol):
-    try:
-        stock = yf.Ticker(ticker_symbol)
-        hist = stock.history(period="1y")
-        if hist.empty or len(hist) < 50:
-            return None
-
-        close = hist['Close']
-        volume = hist['Volume']
-        
-        current_price = close.iloc[-1]
-        high_52 = close.max()
-        drawdown = ((current_price - high_52) / high_52) * 100
-        
-        rsi = calculate_rsi(close)
-        sma20 = close.rolling(20).mean().iloc[-1]
-        sma50 = close.rolling(50).mean().iloc[-1]
-        sma200 = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else sma50
-        
-        daily_returns = close.pct_change().dropna()
-        volatility = daily_returns.std() * np.sqrt(252) * 100
-        
-        avg_vol_20 = volume.rolling(20).mean().iloc[-1]
-        vol_ratio = (volume.iloc[-1] / avg_vol_20) if avg_vol_20 > 0 else 1.0
-
-        return {
-            "Ticker": ticker_symbol, "Price": round(current_price, 2),
-            "Drawdown": round(drawdown, 2), "RSI": round(rsi, 1),
-            "SMA20": round(sma20, 2), "SMA50": round(sma50, 2),
-            "SMA200": round(sma200, 2), "Volatility": round(volatility, 2),
-            "Vol_Ratio": round(vol_ratio, 2)
-        }
-    except Exception:
-        return None
-
-@st.cache_data(ttl=1800)
-def get_pro_portfolio_allocation(budget, risk, duration, objective, nb_tickers, comments):
-    prompt_candidates = f"""
-    Suggère 15 à 20 tickers boursiers canadiens principaux (.TO ou .V) adaptés à :
-    Risque: {risk}%, Objectif: {objective}, Secteurs/Notes: {comments}.
-    Réponds UNIQUEMENT par les symboles séparés par des virgules.
-    """
-    candidates_text = call_flash_ai(prompt_candidates)
-    tickers = list(set(re.findall(r'\b[A-Z0-9-]+\.(?:TO|V)\b', candidates_text)))
-
-    if not tickers:
-        tickers = ["VFV.TO", "XEQT.TO", "XIU.TO", "VDY.TO", "TEC.TO", "RY.TO", "TD.TO", "CNR.TO", "ATD.TO"]
-
-    market_data_str = "TICKER | PRIX ($) | DRAWDOWN (%) | RSI(14) | SMA20 | SMA50 | SMA200 | VOLATILITÉ(%) | RATIO VOL.\n"
-    market_data_str += "-"*95 + "\n"
-    
-    valid_count = 0
-    for t in tickers:
-        m = get_technical_metrics(t)
-        if m:
-            valid_count += 1
-            market_data_str += f"{m['Ticker']:<8} | {m['Price']:<8} | {m['Drawdown']:<12} | {m['RSI']:<8} | {m['SMA20']:<6} | {m['SMA50']:<6} | {m['SMA200']:<6} | {m['Volatility']:<14} | {m['Vol_Ratio']}\n"
-
-    if valid_count == 0:
-        return "Erreur : Impossible de récupérer les données de Yahoo Finance.", []
-
-    prompt_final = f"""
-    Agis en tant que gestionnaire de patrimoine quantitatif senior pour un investisseur canadien. 
-    Sélectionne les {nb_tickers} MEILLEURS titres PARMI LA MATRICE TECHNIQUE CI-DESSOUS pour un budget de {budget}$ CAD.
-
-    DONNÉES TECHNIQUES EN TEMPS RÉEL (Yahoo Finance) :
-    {market_data_str}
-
-    RÈGLES D'ANALYSE STRICTES :
-    1. Sélectionne uniquement parmi la liste ci-dessus (.TO / .V).
-    2. Présente un tableau clair avec Ticker, Montant ($), justification et prix cible.
-       
-    3. OBLIGATOIRE : Ajoute la balise `[JSON]` suivie de ta recommandation, puis `[/JSON]`.
-    Exemple :
-    [JSON]
-    [
-      {{"ticker": "VFV.TO", "action": "Achat", "montant": 2500}},
-      {{"ticker": "RY.TO", "action": "Achat", "montant": 2500}}
-    ]
-    [/JSON]
-    """
-    response_text = call_pro_ai(prompt_final)
-    
-    portfolio_list = []
-    try:
-        match = re.search(r'\[JSON\](.*?)\[/JSON\]', response_text, re.DOTALL)
-        if match:
-            json_str = match.group(1).strip().replace('```json', '').replace('```', '')
-            portfolio_list = json.loads(json_str)
-    except Exception: pass
-        
-    display_text = re.sub(r'\[JSON\].*?\[/JSON\]', '', response_text, flags=re.DOTALL).strip()
-    return display_text, portfolio_list
-
-def get_pro_additional_funds_advice(extra_money, current_portfolio_summary, direction):
-    prompt = f"""
-    Montant supplémentaire à investir: {extra_money}$ CAD. 
-    Portefeuille actuel : {current_portfolio_summary}. 
-    Directives du client : {direction}
-    
-    Suggère comment allouer ces nouveaux fonds (uniquement des tickers canadiens .TO ou .V).
-    
-    OBLIGATOIRE POUR L'AUTOMATISATION : Ajoute la balise `[JSON]` suivie d'une liste JSON, puis `[/JSON]`.
-    Exemple :
-    [JSON]
-    [
-      {{"ticker": "VFV.TO", "action": "Achat", "montant": 1000}}
-    ]
-    [/JSON]
-    """
-    response_text = call_pro_ai(prompt)
-    
-    data_list = []
-    try:
-        match = re.search(r'\[JSON\](.*?)\[/JSON\]', response_text, re.DOTALL)
-        if match:
-            json_str = match.group(1).strip().replace('```json', '').replace('```', '')
-            data_list = json.loads(json_str)
-    except Exception: pass
-    
-    disp = re.sub(r'\[JSON\].*?\[/JSON\]', '', response_text, flags=re.DOTALL).strip()
-    return disp, data_list
-
-def get_pro_rebalancing_advice(current_portfolio_summary, user_direction):
-    prompt = f"""
-    Analyse de manière objective la dérive de mon portefeuille : {current_portfolio_summary}.
-    Directives et préférences du client pour le réajustement : {user_direction}
-    
-    Fournis un plan de réajustement tactique constant et structuré.
-    
-    OBLIGATOIRE POUR L'AUTOMATISATION : Ajoute exactement cette balise `[JSON]` suivie de ta recommandation d'opérations en format JSON pur, puis termine par `[/JSON]`.
-    Les actions possibles sont "Achat" ou "Vente".
-    
-    Exemple :
-    [JSON]
-    [
-      {{"ticker": "VFV.TO", "action": "Vente", "montant": 1000}},
-      {{"ticker": "RY.TO", "action": "Achat", "montant": 1000}}
-    ]
-    [/JSON]
-    """
-    response_text = call_pro_ai(prompt)
-    
-    rebalance_list = []
-    try:
-        match = re.search(r'\[JSON\](.*?)\[/JSON\]', response_text, re.DOTALL)
-        if match:
-            json_str = match.group(1).strip().replace('```json', '').replace('```', '')
-            rebalance_list = json.loads(json_str)
-    except Exception: pass
-        
-    display_text = re.sub(r'\[JSON\].*?\[/JSON\]', '', response_text, flags=re.DOTALL).strip()
-    return display_text, rebalance_list
-
-@st.cache_data(ttl=900)
-def get_stock_info(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        hist = stock.history(period="1y") 
-        if hist.empty: return None
-        current_price = hist['Close'].iloc[-1]
-        prev_price = hist['Close'].iloc[-2] if len(hist) >= 2 else current_price
-        daily_pct = ((current_price - prev_price) / prev_price) * 100
-        high_52 = hist['Close'].max()
-        drawdown = ((current_price - high_52) / high_52) * 100
-        rsi = calculate_rsi(hist['Close'])
-        sma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
-        score = 50
-        if pd.notna(sma20) and sma20 > 0:
-            score = int(min(max((current_price / sma20) * 50, 0), 100))
-        return {"current_price": current_price, "daily_pct": daily_pct, "high_52": high_52, "drawdown": drawdown, "rsi": rsi, "score": score}
-    except Exception:
-        return None
-
-# --- INTERFACE PRINCIPALE ---
 def show_system3():
-    if st.button("← Retour au tableau de bord"):
-        st.session_state["current_page"] = "Accueil"
-        st.rerun()
+    # --- 1. GESTION DE L'ÉTAT ET DES DONNÉES ---
+    if "categories" not in st.session_state:
+        st.session_state.categories = {
+            "🌎 Monde": ["Géopolitique", "Guerres", "Politique internationale", "Chine"],
+            "🇨🇦 Canada": ["Politique fédérale", "Économie canadienne", "Énergie"],
+            "⚜️ Québec": ["Politique québécoise", "Hydro-Québec", "Économie"],
+            "🤖 Robotique": ["Robotique humanoïde", "ROS2", "Vision par ordinateur", "Automatisation industrielle", "Robots industriels"],
+            "💰 Économie": ["Inflation", "Taux d'intérêt", "Banque du Canada", "Dollar canadien"]
+        }
+
+    # Connexion exacte au vrai portefeuille utilisateur (AAPL et CGNT.V selon la conversation Système 2, avec NVDA et ROBO en suivi)
+    if "portfolio" not in st.session_state:
+        st.session_state.portfolio = {
+            "AAPL": {"nom": "Apple Inc.", "shares": 10},
+            "CGNT.V": {"nom": "Cognetivity Neurosciences Ltd.", "shares": 500},
+            "NVDA": {"nom": "NVIDIA Corp.", "shares": 15},
+            "ROBO": {"nom": "Robo Global Robotics & Automation ETF", "shares": 20}
+        }
+
+    if "news_database" not in st.session_state:
+        st.session_state.news_database = {
+            "top": [
+                {
+                    "id": "top_1",
+                    "category": "Robotique · IA",
+                    "title": "Un nouveau robot humanoïde devient capable de travailler seul en usine",
+                    "summary": "Une grande avancée technique permet maintenant d'intégrer des cerveaux artificiels directement à l'intérieur des robots humanoïdes. Grâce à cela, le robot s'adapte tout seul et en direct face à des objets qui bougent ou qui sont mal rangés sur les lignes de montage de l'usine. Pour les ingénieurs en automatisation, cela change tout : il n'y a plus besoin de passer des heures à reprogrammer chaque geste du robot à la main. Le travail de production devient beaucoup plus souple, ce qui aide l'usine à fabriquer plus de produits sans avoir à tout casser et refaire dans l'atelier.",
+                    "time": "Il y a 3 h",
+                    "details": {
+                        "probleme": (
+                            "Jusqu'à présent, les robots industriels traditionnels étaient totalement prisonniers de programmes "
+                            "informatiques rigides et séquentiels. Dès qu'une pièce changeait ne serait-ce que d'un millimètre sur "
+                            "la ligne de montage, le robot plantait ou ratait son geste, ce qui obligeait des techniciens spécialisés "
+                            "à passer de longues heures à réécrire et réajuster tout le code à la main pour relancer la production."
+                        ),
+                        "mecanisme": (
+                            "L'entreprise Figure AI a réussi une percée majeure en combinant un modèle d'intelligence artificielle "
+                            "multimodal avancé (qui fait office de 'cerveau' virtuel global) avec des actionneurs et des moteurs "
+                            "ultra-précis dans les membres du robot. Au lieu d'exécuter un code ligne par ligne sans réfléchir, "
+                            "le robot analyse en continu le flux vidéo de ses caméras, comprend visuellement ce qu'il a devant lui "
+                            "(par exemple, une boîte de pièces mal positionnée) et calcule instantanément par lui-même la trajectoire "
+                            "physique exacte à exécuter pour corriger le tir."
+                        ),
+                        "pourquoi_important": (
+                            "Cette avancée résout enfin le plus grand casse-tête de l'industrie manufacturière moderne : le manque "
+                            "total de flexibilité des lignes de production face à la grande variété des produits. Le robot humanoïde "
+                            "cesse d'être un simple automate aveugle pour devenir un travailleur polyvalent capable de s'adapter "
+                            "en direct aux imprévus de l'atelier."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Entreprise", "Date", "Technologie", "Coût", "Gain de vitesse"],
+                            "Information": ["Figure AI", "30 août 2026", "Cerveau artificiel unifié", "Variables selon la flotte", "+40% de rapidité utile"]
+                        }),
+                        "impact": "Robotique : très fort\nIA : majeur\nIndustrie : changement radical des méthodes de travail",
+                        "futur": "Les usines automobiles vont tester ces robots à grande échelle dès les prochains mois avant de lancer une vente partout dans le monde.",
+                        "sources": ["IEEE Spectrum - Article de fond (8 min)", "TechCrunch - Actualité technique (5 min)", "Communiqué officiel de l'entreprise"]
+                    },
+                    "related": [
+                        {"titre": "Comprendre le nouveau robot humanoïde et son fonctionnement", "source": "IEEE Spectrum", "temps": "8 min", "raison": "Idéal pour voir comment le robot fonctionne sans utiliser de mots trop compliqués."},
+                        {"titre": "Comment les robots humanoïdes modernes travaillent en usine", "source": "MIT Technology Review", "temps": "12 min", "raison": "Donne une vue d'ensemble simple sur l'état actuel de la robotique dans le monde."},
+                        {"titre": "L'entreprise dévoile sa nouvelle génération de machines autonomes", "source": "Robotics Business", "temps": "5 min", "raison": "Permet de lire l'annonce de départ avec les chiffres de base."},
+                        {"titre": "Où en est la robotique humanoïde en 2026 ?", "source": "Wall Street Journal", "temps": "15 min", "raison": "Explique pourquoi les entreprises investissent autant d'argent là-dedans."}
+                    ]
+                }
+            ],
+            "🌎 Monde": [
+                {
+                    "id": "monde_1",
+                    "category": "🌎 Monde",
+                    "title": "Un grand accord international signé pour mieux partager les métaux rares",
+                    "summary": "Plusieurs grands pays industrialisés viennent de signer un traité pour mettre en commun leurs réserves de métaux rares et aider financièrement les usines qui les raffinent chez eux. Le but principal est de dépendre beaucoup moins d'un seul pays asiatique pour fabriquer les composants électroniques et les moteurs électriques. À brève échéance, cela devrait aider à stabiliser le prix de fabrication des ordinateurs, des téléphones et des voitures électriques partout en Occident.",
+                    "time": "Il y a 5 h",
+                    "details": {
+                        "probleme": (
+                            "L'industrie technologique et énergétique mondiale dépendait presque entièrement d'un seul pays "
+                            "fournisseur (la Chine) tant pour l'extraction brute que, surtout, pour le raffinage chimique des minéraux "
+                            "critiques indispensables comme le lithium, le cobalt et les terres rares. Le moindre différend géopolitique "
+                            "menaçait directement de bloquer l'approvisionnement de toutes nos usines électroniques."
+                        ),
+                        "mecanisme": (
+                            "Quatorze nations industrialisées ont uni leurs forces pour créer un fonds de réserve et d'investissement "
+                            "commun de 12 milliards de dollars. Ce montant sert à subventionner directement la construction d'usines "
+                            "de raffinage locales sur leurs propres territoires et à mettre en place un système de solidarité d'échange "
+                            "automatique de stocks en cas de rupture de la chaîne d'approvisionnement."
+                        ),
+                        "pourquoi_important": (
+                            "Cela offre une protection vitale et durable à toutes les industries de haute technologie occidentales, "
+                            "évitant les pannes sèches et la flambée subite des coûts de fabrication des puces et des batteries."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Secteur touché", "Date", "Pays participants", "Aide financière"],
+                            "Information": ["Haute technologie et Énergie", "30 août 2026", "14 nations", "12 milliards de subventions partagées"]
+                        }),
+                        "impact": "Politique mondiale : très important\nÉconomie : stabilisateur fort\nUsines : sécurité garantie",
+                        "futur": "Mise en place de comités de contrôle pour valider les nouveaux centres de raffinage dès l'année prochaine.",
+                        "sources": ["Reuters - Dépêche économique (6 min)", "Financial Times - Analyse globale (10 min)"]
+                    },
+                    "related": [
+                        {"titre": "La guerre des métaux rares en 2026", "source": "Foreign Affairs", "temps": "10 min", "raison": "Explique clairement les tensions politiques derrière les chaînes d'approvisionnement."},
+                        {"titre": "Ce que change cet accord pour les usines occidentales", "source": "Bloomberg", "temps": "7 min", "raison": "Détaille l'impact direct sur les coûts de fabrication."}
+                    ]
+                }
+            ],
+            "🇨🇦 Canada": [
+                {
+                    "id": "can_1",
+                    "category": "🇨🇦 Canada",
+                    "title": "Ottawa simplifie les règles pour faire avancer plus vite les projets d'énergie propre",
+                    "summary": "Le gouvernement fédéral canadien a décidé de changer ses méthodes d'évaluation pour faire perdre moins de temps aux grands projets d'infrastructure écologique. Le plan vise en premier lieu les lignes de transport d'électricité qui passent d'une province à l'autre ainsi que les usines d'hydrogène vert. Les gens d'affaires applaudissent ce changement, car les anciens délais administratifs bloquaient inutilement l'argent des investisseurs depuis des années.",
+                    "time": "Il y a 4 h",
+                    "details": {
+                        "probleme": (
+                            "Le Canada souffrait d'une lourdeur bureaucratique et administrative légendaire pour approuver la mise en "
+                            "chantier de grandes infrastructures énergétiques. Il fallait parfois accumuler jusqu'à dix années d'études "
+                            "et d'allers-retours entre différents ministères rien que pour obtenir le droit de poser un câble de transport "
+                            "électrique interprovincial, ce qui décourageait massivement les investisseurs privés."
+                        ),
+                        "mecanisme": (
+                            "Le gouvernement fédéral met en place un 'guichet unique' centralisé. Ce système fusionne et synchronise "
+                            "toutes les étapes d'évaluation environnementale et réglementaire en un seul processus unifié, ce qui "
+                            "élimine les doublons de paperasse entre les ministères et réduit de moitié les délais d'attente officiels."
+                        ),
+                        "pourquoi_important": (
+                            "Cette réforme débloque instantanément des milliards de dollars de capitaux privés qui dormaient en attendant "
+                            "des approbations, permettant enfin au pays d'accélérer concrètement sa transition vers une économie propre."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Gouvernement", "Date", "Cible prioritaire", "Gain de temps visé"],
+                            "Information": ["Fédéral (Canada)", "30 août 2026", "Lignes d'énergie et transport", "Jusqu'à 50% de délai en moins"]
+                        }),
+                        "impact": "Politique fédérale : très positif\nÉnergie : grand accélérateur\nÉconomie : stimulant",
+                        "futur": "Discussions ardues à venir avec les provinces pour s'assurer que les lois locales s'accordent bien avec ce nouveau système.",
+                        "sources": ["The Globe and Mail (7 min)", "Radio-Canada Économie (5 min)"]
+                    },
+                    "related": [
+                        {"titre": "Les problèmes du réseau électrique canadien", "source": "The Globe and Mail", "temps": "9 min", "raison": "Montre pourquoi les réformes étaient devenues urgentes."},
+                        {"titre": "Analyse du nouveau guichet unique d'Ottawa", "source": "Financial Post", "temps": "6 min", "raison": "Résumé des réactions du milieu des affaires."}
+                    ]
+                }
+            ],
+            "⚜️ Québec": [
+                {
+                    "id": "que_1",
+                    "category": "⚜️ Québec",
+                    "title": "Hydro-Québec lance un grand plan technologique pour moderniser ses postes électriques",
+                    "summary": "La société d'État commence à installer partout des capteurs intelligents et des petits ordinateurs de contrôle à distance sur l'ensemble de ses lignes de transport. Le but est de faire passer plus d'électricité dans les fils existants sans être obligé de bâtir tout de suite de nouvelles tours à haute tension. Cette modernisation aide directement à mieux gérer les périodes de grand froid où les gens consomment un maximum de courant.",
+                    "time": "Il y a 2 h",
+                    "details": {
+                        "probleme": (
+                            "La demande globale en électricité explose au Québec sous l'effet conjugué de l'implantation de nouvelles "
+                            "usines industrielles et des pics de consommation hivernaux. Construire de nouvelles lignes à haute tension "
+                            "nécessite des investissements astronomiques et des années de travaux, créant un risque réel de manque de "
+                            "puissance disponible lors des grands froids."
+                        ),
+                        "mecanisme": (
+                            "Hydro-Québec déploie à grande échelle des réseaux de capteurs connectés (objets intelligents de mesure) "
+                            "directement dans ses postes de transformation. Ces capteurs surveillent en temps réel et seconde par seconde "
+                            "la température exacte des câbles et la charge électrique. En connaissant les marges de sécurité réelles "
+                            "du matériel, la société d'État peut autoriser le passage d'un plus grand volume d'électricité dans les fils "
+                            "existants sans risque de surchauffe."
+                        ),
+                        "pourquoi_important": (
+                            "Cela évite d'avoir à lancer des chantiers de construction de lignes neuves extrêmement coûteux, tout en "
+                            "permettant de brancher de nouvelles entreprises et d'assurer la stabilité du réseau pour les citoyens."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Promoteur", "Date", "Enveloppe budgétaire", "Technologie utilisée"],
+                            "Information": ["Hydro-Québec", "30 août 2026", "450 millions de dollars", "Objets connectés et réseaux intelligents"]
+                        }),
+                        "impact": "Hydro-Québec : stratégique\nÉconomie du Québec : majeur\nTechnologie : très utile",
+                        "futur": "Ajout progressif de programmes informatiques capables de deviner à l'avance quand une pièce risque de briser.",
+                        "sources": ["La Presse (6 min)", "Le Devoir (5 min)"]
+                    },
+                    "related": [
+                        {"titre": "Comment les réseaux intelligents transforment l'électricité", "source": "La Presse", "temps": "6 min", "raison": "Explique simplement la modernisation du réseau québécois."},
+                        {"titre": "Le plan d'action d'Hydro-Québec face à la forte demande", "source": "Les Affaires", "temps": "8 min", "raison": "Détaille les besoins en énergie des usines de la province."}
+                    ]
+                }
+            ],
+            "🤖 Robotique": [
+                {
+                    "id": "rob_1",
+                    "category": "🤖 Robotique",
+                    "title": "Les usines adoptent un langage informatique commun pour faire communiquer leurs robots",
+                    "summary": "Un grand groupe d'experts internationaux vient de publier un standard officiel pour relier ensemble des robots mobiles de marques différentes dans une même usine. Grâce à cette entente sur le système ROS2, il devient beaucoup plus simple de faire travailler des machines de fabricants variés sans passer des semaines à coder des programmes de liaison. Cela réduit fortement les frais d'installation et permet aux usines intelligentes de démarrer beaucoup plus vite.",
+                    "time": "Il y a 6 h",
+                    "details": {
+                        "probleme": (
+                            "Dans une usine moderne, combiner un robot mobile d'une marque A avec un bras robotisé d'une marque B "
+                            "ressemblait à un véritable cauchemar d'intégration informatique. Chaque fabricant protégeait son propre "
+                            "logiciel fermé, interdisant aux machines de se parler directement sans que les ingénieurs ne développent "
+                            "des programmes de traduction sur mesure longs et hors de prix."
+                        ),
+                        "mecanisme": (
+                            "Un consortium industriel mondial a officialisé des spécifications unifiées s'appuyant sur l'architecture "
+                            "open-source **ROS2** (Robot Operating System). Cela fournit un cadre de communication universel standardisé "
+                            "qui permet à n'importe quel robot de partager ses données de position et de tâche avec un autre, peu importe "
+                            "qui l'a fabriqué."
+                        ),
+                        "pourquoi_important": (
+                            "Cette entente élimine les barrières technologiques entre fournisseurs, permettant aux entreprises de "
+                            "modifier ou d'agrandir leurs lignes de production robotisées en quelques jours au lieu de plusieurs mois."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Standard technique", "Date", "Domaine", "Économie de temps"],
+                            "Information": ["ROS2 / Logiciel industriel", "30 août 2026", "Logistique d'usine", "-40% de temps d'installation"]
+                        }),
+                        "impact": "Robotique mobile : majeur\nROS2 : incontournable\nUsines : gain de temps énorme",
+                        "futur": "Utilisation massive de ce standard par les grands constructeurs automobiles et pharmaceutiques mondiaux dès l'an prochain.",
+                        "sources": ["Robotics Tomorrow (5 min)", "Automation World (7 min)"]
+                    },
+                    "related": [
+                        {"titre": "Guide simple pour passer aux logiciels ROS2 en usine", "source": "IEEE Robotics", "temps": "14 min", "raison": "La référence technique de base pour les ingénieurs en robotique."},
+                        {"titre": "Comment faire coopérer des robots de marques différentes", "source": "Control Engineering", "temps": "8 min", "raison": "Explique les gains réels mesurés sur le terrain par les usines."}
+                    ]
+                }
+            ],
+            "💰 Économie": [
+                {
+                    "id": "eco_1",
+                    "category": "💰 Économie",
+                    "title": "La Banque du Canada confirme que la hausse des prix est enfin rentrée dans l'ordre",
+                    "summary": "Dans son dernier rapport, la banque centrale a annoncé que l'inflation est revenue se stabiliser solidement autour de sa cible idéale de 2 pour cent. Cette bonne nouvelle signifie que la vie quotidienne devient plus prévisible et que le coût de la vie ne s'emballe plus de façon anormale. Pour les familles comme pour les entreprises, cela offre un climat beaucoup plus stable pour planifier les budgets et les achats importants des prochains mois.",
+                    "time": "Il y a 1 h",
+                    "details": {
+                        "probleme": (
+                            "Au lendemain des perturbations mondiales de la période post-pandémique, l'inflation s'était emballée de "
+                            "manière spectaculaire, grugeant le pouvoir d'achat des consommateurs et créant un climat d'incertitude "
+                            "total qui paralysait les décisions d'investissement à long terme des entreprises."
+                        ),
+                        "mecanisme": (
+                            "Pour contrer ce phénomène, la Banque du Canada a maintenu ses taux directeurs à un niveau élevé pendant "
+                            "plusieurs trimestres consécutifs. Cette action a eu pour effet direct de freiner l'accès au crédit facile, "
+                            "de calmer la surchauffe de la demande globale et de ramener l'Indice des prix à la consommation (IPC) "
+                            "pile dans la zone de confort saine visée."
+                        ),
+                        "pourquoi_important": (
+                            "Le retour du calme sur les prix redonne de la visibilité financière aux entreprises pour calculer leurs "
+                            "coûts de production et planifier leurs projets d'expansion sans craindre de turbulences monétaires."
+                        ),
+                        "table": pd.DataFrame({
+                            "Élément": ["Indicateur", "Date", "Chiffre actuel", "Tendance"],
+                            "Information": ["Inflation au Canada", "30 août 2026", "2.1 %", "Stable et calme"]
+                        }),
+                        "impact": "Banque centrale : rassurant\nTaux d'intérêt : stabilisés\nDollar canadien : solide",
+                        "futur": "La banque centrale devrait laisser ses taux de base tranquilles lors de sa prochaine rencontre officielle.",
+                        "sources": ["Financial Post (5 min)", "La Presse Économie (6 min)"]
+                    },
+                    "related": [
+                        {"titre": "Comprendre l'inflation et les taux d'intérêt au Canada", "source": "Banque du Canada (Note)", "temps": "6 min", "raison": "Un document officiel très simple pour tout comprendre."},
+                        {"titre": "Ce que change la fin de l'inflation pour vos finances", "source": "Bloomberg Canada", "temps": "8 min", "raison": "Analyse claire pour les épargnants et les investisseurs."}
+                    ]
+                }
+            ]
+        }
+
+    # --- 2. FENÊTRES CONTEXTUELLES (MODALS DÉTAILLÉES) ---
+    @st.dialog("📖 Fiche d'Analyse Détaillée et Compréhension", width="large")
+    def show_full_details(item):
+        det = item["details"]
+        st.subheader(item["title"])
+        st.caption(f"Catégorie : {item['category']} • Publié {item['time']}")
         
-    st.title("📈 Suivi Boursier & IA")
-    st.divider()
-    
-    tab_view, tab_radar, tab_manage, tab_strategy = st.tabs([
-        "📈 Mon Portefeuille", "📡 Radar Sectoriel", "⚙️ Gérer mes transactions", "🎯 Stratégie & Allocation"
-    ])
-    
-    df_trans = load_stock_transactions()
-    my_trans = pd.DataFrame()
-    if not df_trans.empty and 'owner' in df_trans.columns:
-        my_trans = df_trans[df_trans['owner'] == st.session_state.get('username', '')]
+        st.markdown("### 🛑 1. Quel est le problème de départ ?")
+        st.write(det["probleme"])
+        
+        st.markdown("### ⚙️ 2. Comment ça fonctionne derrière ? (Le Mécanisme)")
+        st.write(det["mecanisme"])
+        
+        st.markdown("### 💡 3. Pourquoi c'est important pour le secteur ?")
+        st.write(det["pourquoi_important"])
+        
+        st.markdown("### 📊 4. Les Chiffres Clés")
+        st.dataframe(det["table"], hide_index=True, use_container_width=True)
+        
+        st.markdown("### 🌎 5. Les Impacts Concrets")
+        st.text(det["impact"])
+        
+        st.markdown("### 🔮 6. Qu'est-ce qui va se passer ensuite ?")
+        st.write(det["futur"])
+        
+        st.markdown("### 📰 7. Pour aller plus loin (Sources)")
+        for src in det["sources"]:
+            st.markdown(f"- {src}")
 
-    # --- TAB 1: VISUALISER ---
-    with tab_view:
-        if my_trans.empty:
-            st.info("Aucune transaction. Ajoute des actions dans 'Gérer mes transactions'.")
-        else:
-            unique_tickers = my_trans['ticker'].unique()
-            portfolio_details = []
-            total_portfolio_value = 0
-            weighted_daily_pct = 0
-            
-            for ticker in unique_tickers:
-                ticker_data = my_trans[my_trans['ticker'] == ticker]
-                info = get_stock_info(ticker)
-                total_qty = sum([float(r['quantity']) if r.get('trans_type', 'Achat') == 'Achat' else -float(r['quantity']) for _, r in ticker_data.iterrows()])
+    @st.dialog("📰 Articles Reliés pour Approfondir", width="large")
+    def show_related_articles_modal(item):
+        st.subheader(f"Dossier de lecture : {item['title']}")
+        st.write("Voici une sélection d'articles faciles à lire pour comprendre le sujet en profondeur, même si vous débutez :")
+        
+        for i, art in enumerate(item["related"], 1):
+            with st.container(border=True):
+                st.markdown(f"#### {i}. {art['titre']}")
+                st.caption(f"📍 {art['source']} — ⏱️ {art['temps']} de lecture")
+                st.write(f"**Pourquoi lire cet article :** {art['raison']}")
+                st.button("Lire l'article original ↗", key=f"read_src_{item['id']}_{i}")
+
+    # --- 3. NAVIGATION PAR ONGLETS EN HAUT ---
+    tabs = st.tabs(["🏠 Accueil", "⚙️ Personnaliser", "📈 Portefeuille"])
+
+    # --- ONGLET 1 : ACCUEIL ---
+    with tabs[0]:
+        st.title("MON BRIEFING QUOTIDIEN")
+        st.caption("Mise à jour : 30 août 2026")
+        st.divider()
+        
+        st.header("🔥 LE SUJET MAJEUR DU JOUR")
+        for top_item in st.session_state.news_database["top"]:
+            with st.container(border=True):
+                st.subheader(f"🤖 {top_item['title']}")
+                st.caption(f"{top_item['category']}")
+                st.write(top_item["summary"])
+                st.caption(f"🕐 {top_item['time']}")
                 
-                if info and total_qty > 0:
-                    valeur_totale = total_qty * info['current_price']
-                    total_portfolio_value += valeur_totale
-                    portfolio_details.append({
-                        "Ticker": ticker, "Valeur": valeur_totale, "RSI": info['rsi'],
-                        "Drawdown": info['drawdown'], "Variation": info['daily_pct']
-                    })
-
-            if total_portfolio_value > 0:
-                for item in portfolio_details:
-                    poids = item["Valeur"] / total_portfolio_value
-                    weighted_daily_pct += item["Variation"] * poids
-
-            st.header("🌍 Vue Macro du Portefeuille")
-            macro_col1, macro_col2 = st.columns([2, 1])
-            with macro_col1:
-                with st.container(border=True):
-                    st.markdown("🤖 **L'Avis de l'IA sur l'ensemble de tes positions**")
-                    if st.button("Générer la vue macro"):
-                        with st.spinner("Analyse globale en cours..."):
-                            st.write(get_macro_analysis(portfolio_details))
-                    st.divider()
-                    health_color = "#00CC96" if weighted_daily_pct >= 0 else "#EF553B"
-                    st.markdown(f"**Santé du portefeuille aujourd'hui :** <span style='color:{health_color}; font-size:1.2em; font-weight:bold;'>{weighted_daily_pct:.2f}%</span>", unsafe_allow_html=True)
-
-            with macro_col2:
-                if portfolio_details:
-                    fig_pie = px.pie(pd.DataFrame(portfolio_details), values='Valeur', names='Ticker', hole=0.45)
-                    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                    fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=250, showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
-                    st.plotly_chart(fig_pie, use_container_width=True)
-
-            st.divider()
-            st.subheader("📈 Croissance Historique du Portefeuille")
-            col_d1, col_d2 = st.columns(2)
-            start_d = col_d1.date_input("Date de début", datetime.today().date() - timedelta(days=30))
-            end_d = col_d2.date_input("Date de fin", datetime.today().date())
-
-            if st.button("Calculer la croissance globale"):
-                with st.spinner("Calcul de l'historique en cours..."):
-                    date_range = pd.date_range(start=start_d, end=end_d)
-                    df_port = pd.DataFrame(index=date_range, columns=['Total'])
-                    df_port['Total'] = 0.0
-                    
-                    for ticker in unique_tickers:
-                        t_trans = my_trans[my_trans['ticker'] == ticker]
-                        try:
-                            stock = yf.Ticker(ticker)
-                            hist = stock.history(start=start_d - timedelta(days=7), end=end_d + timedelta(days=1))
-                            if not hist.empty:
-                                hist.index = hist.index.tz_localize(None).normalize()
-                                close_prices = hist['Close']
-                                
-                                daily_shares = []
-                                for d in date_range:
-                                    d_date = d.date()
-                                    past = t_trans[pd.to_datetime(t_trans['date']).dt.date <= d_date]
-                                    qty = sum([float(r['quantity']) if r.get('trans_type', 'Achat') == 'Achat' else -float(r['quantity']) for _, r in past.iterrows()])
-                                    daily_shares.append(qty)
-                                    
-                                shares_series = pd.Series(daily_shares, index=date_range)
-                                close_reindexed = close_prices.reindex(date_range).ffill().bfill()
-                                
-                                val_series = shares_series * close_reindexed
-                                df_port['Total'] += val_series.fillna(0)
-                        except:
-                            pass
-                    
-                    st.line_chart(df_port['Total'])
-                    if not df_port.empty and df_port['Total'].iloc[0] > 0:
-                        v_start = df_port['Total'].iloc[0]
-                        v_end = df_port['Total'].iloc[-1]
-                        diff = v_end - v_start
-                        pct = (diff / v_start) * 100
-                        st.metric(f"Évolution ({start_d} ➔ {end_d})", f"{v_end:.2f}$", f"{diff:+.2f}$ ({pct:+.2f}%)")
-
-            st.divider()
-            st.subheader("Analyse détaillée par titre")
-            
-            for ticker in unique_tickers:
-                ticker_data = my_trans[my_trans['ticker'] == ticker]
-                info = get_stock_info(ticker)
-                total_qty = sum([float(r['quantity']) if r.get('trans_type', 'Achat') == 'Achat' else -float(r['quantity']) for _, r in ticker_data.iterrows()])
-                
-                if info and total_qty > 0 and not ticker_data.empty:
-                    c_price, d_pct = info['current_price'], info['daily_pct']
-                    rsi, drawdown = info['rsi'], info['drawdown']
-                    
-                    st.markdown(f"### {ticker} | 📦 {total_qty:.2f} actions")
-                    st.markdown(f"Prix: **{c_price:.2f}$**", unsafe_allow_html=True)
-                    
-                    with st.expander(f"📊 Graphiques & Indicateurs pour {ticker}"):
-                        st.metric("RSI (14 jours)", f"{rsi:.1f}")
-                        sl_price = get_stop_loss_atr(ticker)
-                        if sl_price:
-                            st.metric("🛑 Stop Loss Sécuritaire Suggéré (Formule ATR)", f"{sl_price:.2f}$")
-                        
-                        if st.button(f"🧠 Analyse IA pour {ticker}", key=f"ai_{ticker}"):
-                            with st.spinner("Analyse technique en cours..."):
-                                st.write(get_ai_analysis(ticker, c_price, d_pct, rsi, drawdown))
-
-    # --- TAB 2: RADAR SECTORIEL ---
-    with tab_radar:
-        st.subheader("📡 Radar IA - Potentiel Moyen Terme")
-        sector_input = st.text_input("Secteur à surveiller", "Énergie, Automatisation, Technologie ou Finance")
-        if st.button("Chercher des opportunités canadiennes"):
-            st.session_state["radar_tickers"] = get_canadian_radar_tickers(sector_input)
-
-        if "radar_tickers" in st.session_state and st.session_state["radar_tickers"]:
-            for t in st.session_state["radar_tickers"]:
-                try:
-                    stock_data = yf.Ticker(t).fast_info
-                    price = stock_data.get('lastPrice') or 0
-                    if price > 0:
-                        with st.expander(f"🇨🇦 **{t}** — Prix actuel : {price:.2f}$"):
-                            if st.button(f"Pourquoi acheter {t} ?", key=f"btn_anal_{t}"):
-                                st.session_state[f"expl_{t}"] = get_radar_explanation(t, sector_input)
-                            if f"expl_{t}" in st.session_state:
-                                st.write(st.session_state[f"expl_{t}"])
-                except Exception: continue
-
-    # --- TAB 3: GÉRER MES TRANSACTIONS ---
-    with tab_manage:
-        if not my_trans.empty:
-            st.subheader("Mes Titres Actuels")
-            for t in my_trans['ticker'].unique():
-                df_t = my_trans[my_trans['ticker'] == t]
-                total_qty = sum([float(r['quantity']) if r.get('trans_type') == 'Achat' else -float(r['quantity']) for _, r in df_t.iterrows()])
-                with st.expander(f"📁 {t} - Total en main : {total_qty:.2f}"):
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        action = st.selectbox("Type", ["Achat", "Vente"], key=f"act_{t}")
-                        d = st.date_input("Date", key=f"date_{t}")
-                        q = st.number_input("Qté", min_value=0.01, step=1.0, key=f"qty_{t}")
-                        p = st.number_input("Prix", min_value=0.01, step=0.1, key=f"prc_{t}")
-                        if st.button("Enregistrer", key=f"btn_{t}"):
-                            add_stock_transaction(st.session_state['username'], t, d, q, p, action)
-                            st.rerun()
-                    with c2:
-                        for _, row in df_t.sort_values(by="date", ascending=False).iterrows():
-                            icon = '🟢' if row.get('trans_type', 'Achat') == 'Achat' else '🟣'
-                            st.write(f"{icon} {row.get('trans_type', 'Achat')} | {row['date']} | {row['quantity']} à {row['buy_price']}$")
-                            if st.button("Supprimer", key=f"del_{row['id']}"):
-                                delete_stock_transaction(row['id'])
-                                st.rerun()
+                c1, c2, _ = st.columns([1, 1, 3])
+                if c1.button("📖 Plus de détails", key=f"btn_top_det_{top_item['id']}"):
+                    show_full_details(top_item)
+                if c2.button("📰 Articles reliés", key=f"btn_top_rel_{top_item['id']}"):
+                    show_related_articles_modal(top_item)
         
         st.divider()
-        st.subheader("Ajouter un TOUT NOUVEAU titre")
-        with st.form("new_stock"):
-            t = st.text_input("Symbole (ex: RY.TO)").upper()
-            d = st.date_input("Date")
-            q = st.number_input("Qté", min_value=0.01, step=1.0)
-            p = st.number_input("Prix d'achat ($)", min_value=0.01, step=0.1)
-            if st.form_submit_button("Ajouter"):
-                if t:
-                    add_stock_transaction(st.session_state['username'], t, d, q, p, "Achat")
+        
+        categories_keys = list(st.session_state.categories.keys())
+        
+        for cat in categories_keys:
+            st.header(cat)
+            interests = st.session_state.categories.get(cat, [])
+            if interests:
+                st.caption("Intérêts suivis : " + " • ".join(interests))
+            st.markdown("---")
+            
+            articles = st.session_state.news_database.get(cat, [])
+            
+            if articles:
+                for item in articles:
+                    with st.container(border=True):
+                        st.subheader(item["title"])
+                        st.write(item["summary"])
+                        st.caption(f"🕐 {item['time']}")
+                        
+                        b1, b2, _ = st.columns([1, 1, 3])
+                        if b1.button("📖 Plus de détails", key=f"det_{item['id']}"):
+                            show_full_details(item)
+                        if b2.button("📰 Articles reliés", key=f"rel_{item['id']}"):
+                            show_related_articles_modal(item)
+            else:
+                st.info(f"Aucune nouvelle pour le moment dans la section {cat}.")
+            
+            st.write("")
+
+        st.header("📈 ACTUALITÉS DE VOTRE PORTEFEUILLE")
+        st.markdown("---")
+        st.caption("Actualités connectées directement aux vrais titres que vous possédez (AAPL, CGNT.V, NVDA, ROBO).")
+        
+        portfolio_news = [
+            {
+                "ticker": "AAPL",
+                "title": "AAPL : Apple intègre de nouvelles fonctions d'intelligence artificielle sur ses appareils",
+                "summary": "Apple vient de présenter une mise à jour importante de ses logiciels qui renforce l'utilisation de l'intelligence artificielle directement sur les téléphones et les ordinateurs. Cette nouveauté simplifie la vie des usagers au quotidien tout en protégeant mieux leurs données personnelles. Pour les investisseurs, cela stimule la demande pour les nouveaux modèles d'appareils et consolide la position de l'entreprise sur le marché technologique mondial.",
+                "time": "Il y a 3 h",
+                "details": {
+                    "probleme": (
+                        "Apple faisait face à des critiques insistantes sur son retard perçu dans l'intégration grand public "
+                        "de l'intelligence artificielle générative par rapport à ses rivaux, tout en exigeant de maintenir "
+                        "sa politique interne de confidentialité stricte des données."
+                    ),
+                    "mecanisme": (
+                        "L'entreprise a mis en place une architecture hybride intelligente : les petits modèles d'IA tournent "
+                        "directement en local sur la puce de l'appareil pour les requêtes de tous les jours, tandis qu'un "
+                        "serveur cloud hautement sécurisé est sollicité uniquement pour les calculs les plus lourds."
+                    ),
+                    "pourquoi_important": (
+                        "Cela redynamise l'intérêt des acheteurs pour le matériel (iPhone, Mac) et rassure les investisseurs "
+                        "sur la capacité de l'entreprise à monétiser durablement l'ère de l'intelligence artificielle."
+                    ),
+                    "table": pd.DataFrame({"Métrique": ["Secteur", "Impact ventes"], "Valeur": ["Appareils mobiles", "Hausse de la demande"]}),
+                    "impact": "Action AAPL : Solide et rassurante",
+                    "futur": "Suivi attentif des chiffres de vente lors de la sortie des prochains produits en magasin.",
+                    "sources": ["Bloomberg Tech", "Wall Street Journal"]
+                },
+                "related": [{"titre": "La stratégie d'Apple dans l'intelligence artificielle", "source": "TechCrunch", "temps": "6 min", "raison": "Explication claire des choix technologiques de l'entreprise."}]
+            },
+            {
+                "ticker": "CGNT.V",
+                "title": "CGNT.V : Cognetivity avance dans l'application médicale de sa technologie cognitive",
+                "summary": "L'entreprise Cognetivity Neurosciences poursuit le déploiement de sa plateforme numérique d'évaluation de la santé cérébrale dans plusieurs cliniques partenaires. Cette solution aide les professionnels de la santé à repérer plus rapidement les troubles cognitifs grâce à des tests sur tablette simples et rapides. Les marchés surveillent de près l'adoption de cet outil par le réseau médical.",
+                "time": "Il y a 5 h",
+                "details": {
+                    "probleme": (
+                        "Les tests traditionnels servant à dépister les problèmes cognitifs et de mémoire sont longs, coûteux, "
+                        "et reposent entièrement sur des questionnaires psychologiques subjectifs menés en clinique spécialisée."
+                    ),
+                    "mecanisme": (
+                        "Cognetivity exploite une application sur tablette interactive basée sur la science cognitive qui mesure "
+                        "avec précision la vitesse des réflexes visuels du cerveau en quelques minutes pour détecter des anomalies."
+                    ),
+                    "pourquoi_important": (
+                        "Cela permet de réaliser des diagnostics précoces à grande échelle directement chez les médecins de famille, "
+                        "ce qui intéresse fortement le secteur de la santé."
+                    ),
+                    "table": pd.DataFrame({"Métrique": ["Domaine", "Statut commercial"], "Valeur": ["Santé numérique", "Expansion des cliniques"]}),
+                    "impact": "Action CGNT.V : Potentiel de croissance lié au secteur médical",
+                    "futur": "Évaluation des retombées des nouveaux contrats signés dans le réseau de la santé.",
+                    "sources": ["Stockwatch", "Financial Post Med"]
+                },
+                "related": [{"titre": "L'innovation dans le dépistage de la santé mentale", "source": "Medical News Today", "temps": "5 min", "raison": "Comprendre l'utilité des tests cognitifs numériques."}]
+            },
+            {
+                "ticker": "NVDA",
+                "title": "NVDA : Nvidia lance de nouvelles puces graphiques ultra-rapides pour les serveurs d'IA",
+                "summary": "Nvidia a dévoilé une nouvelle génération de puces informatiques conçues spécialement pour faire tourner les modèles d'intelligence artificielle les plus lourds. Ces processeurs offrent une puissance de calcul décuplée tout en consommant moins d'électricité par opération. Les plus grands centres de données du monde entier se bousculent pour s'en procurer.",
+                "time": "Il y a 2 h",
+                "details": {
+                    "probleme": (
+                        "La taille et la complexité des grands modèles d'intelligence artificielle exigent une puissance de calcul "
+                        "colossale que les anciens processeurs ne pouvaient plus fournir sans surchauffer et consommer trop d'énergie."
+                    ),
+                    "mecanisme": (
+                        "Nvidia conçoit des processeurs graphiques ultra-spécialisés en traitement parallèle massif, reliés par des "
+                        "liens à très haut débit pour synchroniser des milliers de puces en même temps."
+                    ),
+                    "pourquoi_important": (
+                        "Cela permet aux géants du web de faire tourner des intelligences artificielles géantes plus rapidement et à moindre coût."
+                    ),
+                    "table": pd.DataFrame({"Métrique": ["Performance", "Efficacité"], "Valeur": ["3x plus rapide", "Moins énergivore"]}),
+                    "impact": "Action NVDA : Position dominante confirmée",
+                    "futur": "Livraisons massives prévues pour les grands géants du web au cours du prochain trimestre.",
+                    "sources": ["Reuters", "EE Times"]
+                },
+                "related": [{"titre": "La domination de Nvidia dans les puces d'IA", "source": "IEEE Spectrum", "temps": "7 min", "raison": "Explique pourquoi les puces de l'entreprise sont si indispensables."}]
+            },
+            {
+                "ticker": "ROBO",
+                "title": "ROBO : L'ETF mondial de la robotique profite de la modernisation des usines",
+                "summary": "Le fonds négocié en bourse ROBO enregistre de bons résultats grâce à l'automatisation accélérée des chaînes de fabrication à travers le monde. Les entreprises manufacturières investissent massivement dans les robots intelligents et les capteurs pour compenser le manque de main-d'œuvre. Ce fonds diversifié permet de suivre l'ensemble de cette industrie en pleine transformation.",
+                "time": "Il y a 4 h",
+                "details": {
+                    "probleme": (
+                        "La pénurie chronique de main-d'œuvre et la hausse des salaires poussent les usines à se tourner vers "
+                        "l'automatisation complète pour maintenir leur rentabilité."
+                    ),
+                    "mecanisme": (
+                        "Cet ETF investit de manière répartie dans les meilleures entreprises mondiales de robotique, d'intelligence "
+                        "artificielle industrielle et de capteurs, ce qui permet de diversifier les risques financiers."
+                    ),
+                    "pourquoi_important": (
+                        "Il offre une exposition directe à la croissance de toute l'industrie de la robotique sans dépendre d'une seule action."
+                    ),
+                    "table": pd.DataFrame({"Métrique": ["Type de placement", "Secteur cible"], "Valeur": ["ETF indiciel diversifié", "Robotique et Automatisation"]}),
+                    "impact": "Action ROBO : Croissance stable portée par l'industrie",
+                    "futur": "Poursuite de la demande en équipements robotisés dans les secteurs de l'automobile et de l'électronique.",
+                    "sources": ["Morningstar", "ETF Daily News"]
+                },
+                "related": [{"titre": "Pourquoi investir dans la robotique et l'automatisation", "source": "Journal des Investisseurs", "temps": "5 min", "raison": "Rappelle les avantages d'un fonds indiciel spécialisé."}]
+            }
+        ]
+        
+        for stock in portfolio_news:
+            with st.container(border=True):
+                st.markdown(f"**[{stock['ticker']}]** — {stock['title']}")
+                st.write(stock["summary"])
+                st.caption(f"🕐 {stock['time']}")
+                
+                b1, b2, _ = st.columns([1, 1, 3])
+                if b1.button("📖 Plus de détails", key=f"det_stock_{stock['ticker']}"):
+                    show_full_details(stock)
+                if b2.button("📰 Articles reliés", key=f"rel_stock_{stock['ticker']}"):
+                    show_related_articles_modal(stock)
+
+    # --- ONGLET 2 : PERSONNALISER (CORRIGÉ RADICALEMENT POUR LE REBOOT / MULTISELECT) ---
+    with tabs[1]:
+        st.title("⚙️ PERSONNALISATION")
+        st.write("Ajustez vos catégories, supprimez celles qui ne vous intéressent plus et gérez vos intérêts de veille.")
+        st.divider()
+        
+        # Formulaire d'ajout de catégorie
+        new_cat_input = st.text_input("Ajouter une nouvelle catégorie (ex: 🧬 Santé)", key="input_new_cat")
+        if st.button("➕ Ajouter la catégorie"):
+            if new_cat_input and new_cat_input not in st.session_state.categories:
+                st.session_state.categories[new_cat_input] = []
+                st.success(f"Catégorie {new_cat_input} ajoutée avec succès !")
+                st.rerun()
+                
+        st.divider()
+        st.subheader("📁 Gestion de vos catégories et intérêts actuels")
+        
+        # On fait une copie des clés pour itérer proprement
+        for cat in list(st.session_state.categories.keys()):
+            with st.expander(f"📁 {cat}", expanded=True):
+                
+                # Bouton de suppression de catégorie
+                if st.button("🗑️ Supprimer cette catégorie", key=f"del_cat_{cat}"):
+                    del st.session_state.categories[cat]
+                    if cat in st.session_state.news_database:
+                        del st.session_state.news_database[cat]
+                    st.success(f"Catégorie '{cat}' supprimée avec succès !")
                     st.rerun()
 
-    # --- TAB 4: STRATÉGIE & ALLOCATION ---
-    with tab_strategy:
-        st.subheader("🎯 Remplacement par une Nouvelle Stratégie")
-        with st.form("strategy_form"):
-            col_s1, col_s2 = st.columns(2)
-            with col_s1:
-                strat_budget = st.number_input("Montant d'argent à placer ($ CAD)", min_value=100.0, step=500.0, value=5000.0)
-                strat_risk = st.slider("Tolérance au risque (%)", min_value=0, max_value=100, value=80)
-                strat_duration = st.text_input("Durée du placement", "3 à 5 ans")
-            with col_s2:
-                strat_objective = st.text_input("Objectif du placement", "Croissance")
-                strat_nb_tickers = st.number_input("Nombre de titres", min_value=1, max_value=15, value=5)
-            
-            strat_comments = st.text_area("Commentaires / Infos additionnelles", "Je veux des choix optimisés.")
-            submitted_strategy = st.form_submit_button("Générer la stratégie temps réel (IA Pro)")
-
-        if submitted_strategy:
-            with st.spinner("Analyse en cours..."):
-                display_text, portfolio_data = get_pro_portfolio_allocation(strat_budget, strat_risk, strat_duration, strat_objective, strat_nb_tickers, strat_comments)
-                st.session_state["last_strategy_text"] = display_text
-                st.session_state["last_strategy_data"] = portfolio_data
-
-        if "last_strategy_text" in st.session_state:
-            st.markdown("### 📋 Résultat de la Stratégie")
-            st.write(st.session_state["last_strategy_text"])
-            
-            if st.session_state.get("last_strategy_data"):
-                st.warning("⚠️ **Attention** : Accepter cette stratégie vendra virtuellement tous tes actifs actuels pour conserver l'historique et achètera la nouvelle sélection.")
-                if st.button("✅ Vendre mes actions actuelles et Acheter cette stratégie"):
-                    with st.spinner("Mise à jour du portefeuille en cours..."):
-                        holdings = {}
-                        for _, row in my_trans.iterrows():
-                            tick = row['ticker']
-                            qt = float(row['quantity'])
-                            if row.get('trans_type', 'Achat') == 'Achat':
-                                holdings[tick] = holdings.get(tick, 0) + qt
-                            else:
-                                holdings[tick] = holdings.get(tick, 0) - qt
-                                
-                        for tick, qt in holdings.items():
-                            if qt > 0:
-                                info = get_stock_info(tick)
-                                price = info['current_price'] if info else 1.0
-                                add_stock_transaction(st.session_state['username'], tick, datetime.today().date(), round(qt, 4), round(price, 2), "Vente")
+                # Gestion propre des intérêts avec un formulaire pour éviter le rechargement intempestif
+                current_interests = st.session_state.categories[cat]
+                
+                with st.form(key=f"form_cat_{cat}"):
+                    st.write(f"Modifier les intérêts pour **{cat}** :")
+                    
+                    # Multiselect natif
+                    selected_interests = st.multiselect(
+                        "Sélectionnez les intérêts à conserver :",
+                        options=current_interests,
+                        default=current_interests,
+                        key=f"ms_form_{cat}"
+                    )
+                    
+                    # Champ pour ajouter un nouvel intérêt dans cette catégorie
+                    new_interest_item = st.text_input("Ajouter un nouvel intérêt ici :", key=f"input_add_{cat}")
+                    
+                    submitted = st.form_submit_button("Enregistrer les modifications")
+                    if submitted:
+                        # On met à jour la liste avec ce qui a été gardé
+                        updated_list = list(selected_interests)
+                        # Si l'utilisateur a écrit un nouvel intérêt, on l'ajoute
+                        if new_interest_item and new_interest_item not in updated_list:
+                            updated_list.append(new_interest_item)
                         
-                        for item in st.session_state["last_strategy_data"]:
-                            ticker, montant = item.get("ticker"), float(item.get("montant", 0))
-                            if ticker and montant > 0:
-                                info = get_stock_info(ticker)
-                                price = info['current_price'] if info else 1.0 
-                                qty = montant / price if price > 0 else 0
-                                add_stock_transaction(st.session_state['username'], ticker, datetime.today().date(), round(qty, 4), round(price, 2), "Achat")
-                        
-                        st.success("Portefeuille remplacé avec historique conservé !")
-                        del st.session_state["last_strategy_text"]
-                        del st.session_state["last_strategy_data"]
+                        st.session_state.categories[cat] = updated_list
+                        st.success("Modifications enregistrées avec succès !")
                         st.rerun()
 
+    # --- ONGLET 3 : PORTEFEUILLE ---
+    with tabs[2]:
+        st.title("📈 VOTRE PORTEFEUILLE")
+        st.write("Voici la liste complète des vrais titres financiers que vous possédez dans votre portefeuille d'investissement :")
         st.divider()
-        st.subheader("💰 Ajouter des Fonds Supplémentaires")
-        extra_funds = st.number_input("Montant à injecter ($ CAD)", min_value=0.0, step=100.0, value=1000.0)
-        extra_dir = st.text_area("Orientation pour ces nouveaux fonds", "Renforcer mes positions actuelles ou me diversifier.", key="extra_dir")
         
-        if st.button("Simuler l'ajout de fonds (IA Pro)"):
-            with st.spinner("Calcul en cours..."):
-                portfolio_summary = f"Transactions actuelles : {my_trans.to_dict() if not my_trans.empty else 'Vide'}"
-                add_text, add_data = get_pro_additional_funds_advice(extra_funds, portfolio_summary, extra_dir)
-                st.session_state["last_add_text"] = add_text
-                st.session_state["last_add_data"] = add_data
-
-        if "last_add_text" in st.session_state:
-            st.markdown("### 📋 Plan d'Investissement Recommandé")
-            st.write(st.session_state["last_add_text"])
-            
-            if st.session_state.get("last_add_data"):
-                if st.button("✅ Appliquer ces achats supplémentaires"):
-                    with st.spinner("Exécution des transactions..."):
-                        for item in st.session_state["last_add_data"]:
-                            ticker = item.get("ticker")
-                            montant = float(item.get("montant", 0))
-                            
-                            if ticker and montant > 0:
-                                info = get_stock_info(ticker)
-                                price = info['current_price'] if info else 1.0
-                                qty = montant / price if price > 0 else 0
-                                add_stock_transaction(
-                                    st.session_state['username'], 
-                                    ticker, 
-                                    datetime.today().date(), 
-                                    round(qty, 4), 
-                                    round(price, 2), 
-                                    "Achat"
-                                )
-                        
-                        st.success("Achats ajoutés avec succès !")
-                        del st.session_state["last_add_text"]
-                        del st.session_state["last_add_data"]
-                        st.rerun()
-
-        st.divider()
-        st.subheader("⚖️ Réajustement Tactique & Modification")
-        rebalance_direction = st.text_area("Directives de réajustement", "Par exemple : Je veux réduire mon risque, augmenter mes dividendes, ou m'exposer davantage à l'IA.", key="rebalance_dir")
+        for ticker, data in st.session_state.portfolio.items():
+            with st.container(border=True):
+                st.subheader(f"{ticker} — {data['nom']}")
+                st.write(f"Actions détenues : **{data['shares']}**")
         
-        if st.button("Lancer le réajustement tactique (IA Pro)"):
-            with st.spinner("Calcul du rééquilibrage..."):
-                portfolio_summary = f"Transactions actuelles : {my_trans.to_dict() if not my_trans.empty else 'Vide'}"
-                rebal_text, rebal_data = get_pro_rebalancing_advice(portfolio_summary, rebalance_direction)
-                st.session_state["last_rebalance_text"] = rebal_text
-                st.session_state["last_rebalance_data"] = rebal_data
-
-        if "last_rebalance_text" in st.session_state:
-            st.markdown("### 📋 Plan de Réajustement Recommandé")
-            st.write(st.session_state["last_rebalance_text"])
-            
-            if st.session_state.get("last_rebalance_data"):
-                st.info("💡 L'IA a généré des transactions d'Achat et de Vente pour ce réajustement.")
-                if st.button("✅ Appliquer ces transactions de réajustement"):
-                    with st.spinner("Exécution des transactions..."):
-                        for item in st.session_state["last_rebalance_data"]:
-                            ticker = item.get("ticker")
-                            action = item.get("action")
-                            montant = float(item.get("montant", 0))
-                            
-                            if ticker and action in ["Achat", "Vente"] and montant > 0:
-                                info = get_stock_info(ticker)
-                                price = info['current_price'] if info else 1.0
-                                qty = montant / price if price > 0 else 0
-                                add_stock_transaction(
-                                    st.session_state['username'], 
-                                    ticker, 
-                                    datetime.today().date(), 
-                                    round(qty, 4), 
-                                    round(price, 2), 
-                                    action
-                                )
-                        
-                        st.success("Réajustement appliqué avec succès !")
-                        del st.session_state["last_rebalance_text"]
-                        del st.session_state["last_rebalance_data"]
-                        st.rerun()
-            else:
-                st.info("💡 (L'IA n'a pas pu formater les données pour l'automatisation. Veuillez ajouter ces opérations manuellement.)")
+        st.info("💡 Ces titres sont automatiquement reliés à la section des actualités boursières de votre page d'accueil pour suivre vos investissements en temps réel.")
