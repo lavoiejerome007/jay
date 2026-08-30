@@ -260,7 +260,7 @@ def get_stock_info(ticker):
         return None
 
 # --- INTERFACE PRINCIPALE ---
-def show_system2():
+def show_system3():
     if st.button("← Retour au tableau de bord"):
         st.session_state["current_page"] = "Accueil"
         st.rerun()
