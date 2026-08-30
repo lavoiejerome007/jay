@@ -13,7 +13,7 @@ def show_system3():
             "💰 Économie": ["Inflation", "Taux d'intérêt", "Banque du Canada", "Dollar canadien"]
         }
 
-    # Connexion au portefeuille réel (AAPL, CGNT.V, NVDA, ROBO)
+    # Connexion exacte au vrai portefeuille utilisateur (AAPL et CGNT.V selon la conversation Système 2, avec NVDA et ROBO en suivi)
     if "portfolio" not in st.session_state:
         st.session_state.portfolio = {
             "AAPL": {"nom": "Apple Inc.", "shares": 10},
@@ -32,9 +32,26 @@ def show_system3():
                     "summary": "Une grande avancée technique permet maintenant d'intégrer des cerveaux artificiels directement à l'intérieur des robots humanoïdes. Grâce à cela, le robot s'adapte tout seul et en direct face à des objets qui bougent ou qui sont mal rangés sur les lignes de montage de l'usine. Pour les ingénieurs en automatisation, cela change tout : il n'y a plus besoin de passer des heures à reprogrammer chaque geste du robot à la main. Le travail de production devient beaucoup plus souple, ce qui aide l'usine à fabriquer plus de produits sans avoir à tout casser et refaire dans l'atelier.",
                     "time": "Il y a 3 h",
                     "details": {
-                        "probleme": "Jusqu'à présent, les robots industriels étaient prisonniers de programmes informatiques rigides. Dès qu'une pièce changeait de millimètre sur la ligne de montage, le robot plantait ou ratait son geste, ce qui obligeait des techniciens à passer des heures à le reprogrammer.",
-                        "mecanisme": "L'entreprise Figure AI a combiné un modèle d'intelligence artificielle multimodal (un 'cerveau' virtuel) avec des moteurs ultra-précis dans les membres du robot. Au lieu d'exécuter un code ligne par ligne, le robot analyse sa caméra en direct, comprend ce qu'il voit (par exemple, une boîte mal positionnée) et calcule lui-même le mouvement physique à faire pour rectifier la situation.",
-                        "pourquoi_important": "Cela résout le plus grand casse-tête de l'industrie manufacturière moderne : le manque de flexibilité des lignes de production face à la variété des produits. Le robot devient enfin un 'travailleur universel' adaptable.",
+                        "probleme": (
+                            "Jusqu'à présent, les robots industriels traditionnels étaient totalement prisonniers de programmes "
+                            "informatiques rigides et séquentiels. Dès qu'une pièce changeait ne serait-ce que d'un millimètre sur "
+                            "la ligne de montage, le robot plantait ou ratait son geste, ce qui obligeait des techniciens spécialisés "
+                            "à passer de longues heures à réécrire et réajuster tout le code à la main pour relancer la production."
+                        ),
+                        "mecanisme": (
+                            "L'entreprise Figure AI a réussi une percée majeure en combinant un modèle d'intelligence artificielle "
+                            "multimodal avancé (qui fait office de 'cerveau' virtuel global) avec des actionneurs et des moteurs "
+                            "ultra-précis dans les membres du robot. Au lieu d'exécuter un code ligne par ligne sans réfléchir, "
+                            "le robot analyse en continu le flux vidéo de ses caméras, comprend visuellement ce qu'il a devant lui "
+                            "(par exemple, une boîte de pièces mal positionnée) et calcule instantanément par lui-même la trajectoire "
+                            "physique exacte à exécuter pour corriger le tir."
+                        ),
+                        "pourquoi_important": (
+                            "Cette avancée résout enfin le plus grand casse-tête de l'industrie manufacturière moderne : le manque "
+                            "total de flexibilité des lignes de production face à la grande variété des produits. Le robot humanoïde "
+                            "cesse d'être un simple automate aveugle pour devenir un travailleur polyvalent capable de s'adapter "
+                            "en direct aux imprévus de l'atelier."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Entreprise", "Date", "Technologie", "Coût", "Gain de vitesse"],
                             "Information": ["Figure AI", "30 août 2026", "Cerveau artificiel unifié", "Variables selon la flotte", "+40% de rapidité utile"]
@@ -59,9 +76,22 @@ def show_system3():
                     "summary": "Plusieurs grands pays industrialisés viennent de signer un traité pour mettre en commun leurs réserves de métaux rares et aider financièrement les usines qui les raffinent chez eux. Le but principal est de dépendre beaucoup moins d'un seul pays asiatique pour fabriquer les composants électroniques et les moteurs électriques. À brève échéance, cela devrait aider à stabiliser le prix de fabrication des ordinateurs, des téléphones et des voitures électriques partout en Occident.",
                     "time": "Il y a 5 h",
                     "details": {
-                        "probleme": "L'industrie technologique mondiale dépendait presque entièrement d'un seul pays (la Chine) pour l'extraction et surtout le raffinage des minéraux critiques (lithium, cobalt, terres rares). Le moindre conflit politique menaçait de bloquer la fabrication de tous nos appareils électroniques.",
-                        "mecanisme": "Quatorze pays industrialisés ont créé un fonds commun de 12 milliards de dollars pour financer des usines de raffinage locales et s'échanger directement leurs stocks en cas de crise, contournant ainsi les monopoles d'exportation.",
-                        "pourquoi_important": "Cela sécurise toute la chaîne d'approvisionnement des usines occidentales, évitant des arrêts de production massifs comme ceux vécus par le passé dans l'automobile et l'électronique.",
+                        "probleme": (
+                            "L'industrie technologique et énergétique mondiale dépendait presque entièrement d'un seul pays "
+                            "fournisseur (la Chine) tant pour l'extraction brute que, surtout, pour le raffinage chimique des minéraux "
+                            "critiques indispensables comme le lithium, le cobalt et les terres rares. Le moindre différend géopolitique "
+                            "menaçait directement de bloquer l'approvisionnement de toutes nos usines électroniques."
+                        ),
+                        "mecanisme": (
+                            "Quatorze nations industrialisées ont uni leurs forces pour créer un fonds de réserve et d'investissement "
+                            "commun de 12 milliards de dollars. Ce montant sert à subventionner directement la construction d'usines "
+                            "de raffinage locales sur leurs propres territoires et à mettre en place un système de solidarité d'échange "
+                            "automatique de stocks en cas de rupture de la chaîne d'approvisionnement."
+                        ),
+                        "pourquoi_important": (
+                            "Cela offre une protection vitale et durable à toutes les industries de haute technologie occidentales, "
+                            "évitant les pannes sèches et la flambée subite des coûts de fabrication des puces et des batteries."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Secteur touché", "Date", "Pays participants", "Aide financière"],
                             "Information": ["Haute technologie et Énergie", "30 août 2026", "14 nations", "12 milliards de subventions partagées"]
@@ -84,9 +114,21 @@ def show_system3():
                     "summary": "Le gouvernement fédéral canadien a décidé de changer ses méthodes d'évaluation pour faire perdre moins de temps aux grands projets d'infrastructure écologique. Le plan vise en premier lieu les lignes de transport d'électricité qui passent d'une province à l'autre ainsi que les usines d'hydrogène vert. Les gens d'affaires applaudissent ce changement, car les anciens délais administratifs bloquaient inutilement l'argent des investisseurs depuis des années.",
                     "time": "Il y a 4 h",
                     "details": {
-                        "probleme": "Le Canada était enlisé dans une bureaucratie administrative interminable pour approuver la construction de nouvelles infrastructures énergétiques. Il fallait parfois 10 ans d'études d'impact pour poser un câble électrique ou bâtir une usine propre, ce qui faisait fuir les investisseurs.",
-                        "mecanisme": "Ottawa instaure un 'guichet unique' fédéral qui regroupe toutes les autorisations en un seul processus synchronisé, réduisant les allers-retours entre ministères et coupant les délais d'attente de moitié.",
-                        "pourquoi_important": "Cela permet de débloquer des milliards de dollars d'investissements privés et d'accélérer concrètement la transition énergétique du pays.",
+                        "probleme": (
+                            "Le Canada souffrait d'une lourdeur bureaucratique et administrative légendaire pour approuver la mise en "
+                            "chantier de grandes infrastructures énergétiques. Il fallait parfois accumuler jusqu'à dix années d'études "
+                            "et d'allers-retours entre différents ministères rien que pour obtenir le droit de poser un câble de transport "
+                            "électrique interprovincial, ce qui décourageait massivement les investisseurs privés."
+                        ),
+                        "mecanisme": (
+                            "Le gouvernement fédéral met en place un 'guichet unique' centralisé. Ce système fusionne et synchronise "
+                            "toutes les étapes d'évaluation environnementale et réglementaire en un seul processus unifié, ce qui "
+                            "élimine les doublons de paperasse entre les ministères et réduit de moitié les délais d'attente officiels."
+                        ),
+                        "pourquoi_important": (
+                            "Cette réforme débloque instantanément des milliards de dollars de capitaux privés qui dormaient en attendant "
+                            "des approbations, permettant enfin au pays d'accélérer concrètement sa transition vers une économie propre."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Gouvernement", "Date", "Cible prioritaire", "Gain de temps visé"],
                             "Information": ["Fédéral (Canada)", "30 août 2026", "Lignes d'énergie et transport", "Jusqu'à 50% de délai en moins"]
@@ -109,9 +151,23 @@ def show_system3():
                     "summary": "La société d'État commence à installer partout des capteurs intelligents et des petits ordinateurs de contrôle à distance sur l'ensemble de ses lignes de transport. Le but est de faire passer plus d'électricité dans les fils existants sans être obligé de bâtir tout de suite de nouvelles tours à haute tension. Cette modernisation aide directement à mieux gérer les périodes de grand froid où les gens consomment un maximum de courant.",
                     "time": "Il y a 2 h",
                     "details": {
-                        "probleme": "La demande en électricité monte en flèche au Québec en raison de l'arrivée de nouvelles usines et des hivers froids. Construire de nouvelles lignes à haute tension prend des années et coûte des milliards, créant un risque de pénurie de puissance aux heures de pointe.",
-                        "mecanisme": "Hydro-Québec déploie massivement des capteurs IIoT (objets connectés industriels) dans ses sous-stations pour surveiller en temps réel la température et la charge exacte des lignes. En connaissant la capacité réelle minute par minute, le réseau accepte de faire passer plus de courant en toute sécurité sans surchauffer.",
-                        "pourquoi_important": "Cela évite de dépenser des fortunes en nouvelles constructions tout en permettant de brancher de nouvelles industries sans risquer de pannes majeures.",
+                        "probleme": (
+                            "La demande globale en électricité explose au Québec sous l'effet conjugué de l'implantation de nouvelles "
+                            "usines industrielles et des pics de consommation hivernaux. Construire de nouvelles lignes à haute tension "
+                            "nécessite des investissements astronomiques et des années de travaux, créant un risque réel de manque de "
+                            "puissance disponible lors des grands froids."
+                        ),
+                        "mecanisme": (
+                            "Hydro-Québec déploie à grande échelle des réseaux de capteurs connectés (objets intelligents de mesure) "
+                            "directement dans ses postes de transformation. Ces capteurs surveillent en temps réel et seconde par seconde "
+                            "la température exacte des câbles et la charge électrique. En connaissant les marges de sécurité réelles "
+                            "du matériel, la société d'État peut autoriser le passage d'un plus grand volume d'électricité dans les fils "
+                            "existants sans risque de surchauffe."
+                        ),
+                        "pourquoi_important": (
+                            "Cela évite d'avoir à lancer des chantiers de construction de lignes neuves extrêmement coûteux, tout en "
+                            "permettant de brancher de nouvelles entreprises et d'assurer la stabilité du réseau pour les citoyens."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Promoteur", "Date", "Enveloppe budgétaire", "Technologie utilisée"],
                             "Information": ["Hydro-Québec", "30 août 2026", "450 millions de dollars", "Objets connectés et réseaux intelligents"]
@@ -134,9 +190,22 @@ def show_system3():
                     "summary": "Un grand groupe d'experts internationaux vient de publier un standard officiel pour relier ensemble des robots mobiles de marques différentes dans une même usine. Grâce à cette entente sur le système ROS2, il devient beaucoup plus simple de faire travailler des machines de fabricants variés sans passer des semaines à coder des programmes de liaison. Cela réduit fortement les frais d'installation et permet aux usines intelligentes de démarrer beaucoup plus vite.",
                     "time": "Il y a 6 h",
                     "details": {
-                        "probleme": "Dans une usine moderne, acheter un robot d'une marque A et un autre d'une marque B tournait au cauchemar informatique. Chaque fabricant imposait son propre logiciel fermé, rendant impossible la communication entre les machines sans passer par des programmes de traduction sur mesure hors de prix.",
-                        "mecanisme": "Le consortium industriel officialise un profil de référence unifié basé sur le framework open-source **ROS2** (Robot Operating System). Cela crée un 'pont de communication' universel en temps réel pour toutes les flottes de robots mobiles.",
-                        "pourquoi_important": "Cela supprime les barrières technologiques entre fournisseurs, permettant aux usines de composer des lignes de production modulaires et de changer de matériel facilement.",
+                        "probleme": (
+                            "Dans une usine moderne, combiner un robot mobile d'une marque A avec un bras robotisé d'une marque B "
+                            "ressemblait à un véritable cauchemar d'intégration informatique. Chaque fabricant protégeait son propre "
+                            "logiciel fermé, interdisant aux machines de se parler directement sans que les ingénieurs ne développent "
+                            "des programmes de traduction sur mesure longs et hors de prix."
+                        ),
+                        "mecanisme": (
+                            "Un consortium industriel mondial a officialisé des spécifications unifiées s'appuyant sur l'architecture "
+                            "open-source **ROS2** (Robot Operating System). Cela fournit un cadre de communication universel standardisé "
+                            "qui permet à n'importe quel robot de partager ses données de position et de tâche avec un autre, peu importe "
+                            "qui l'a fabriqué."
+                        ),
+                        "pourquoi_important": (
+                            "Cette entente élimine les barrières technologiques entre fournisseurs, permettant aux entreprises de "
+                            "modifier ou d'agrandir leurs lignes de production robotisées en quelques jours au lieu de plusieurs mois."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Standard technique", "Date", "Domaine", "Économie de temps"],
                             "Information": ["ROS2 / Logiciel industriel", "30 août 2026", "Logistique d'usine", "-40% de temps d'installation"]
@@ -147,7 +216,7 @@ def show_system3():
                     },
                     "related": [
                         {"titre": "Guide simple pour passer aux logiciels ROS2 en usine", "source": "IEEE Robotics", "temps": "14 min", "raison": "La référence technique de base pour les ingénieurs en robotique."},
-                        {"titre": "Cómo hacer cooperar robots de marcas diferentes", "source": "Control Engineering", "temps": "8 min", "raison": "Explique les gains réels mesurés sur le terrain par les usines."}
+                        {"titre": "Comment faire coopérer des robots de marques différentes", "source": "Control Engineering", "temps": "8 min", "raison": "Explique les gains réels mesurés sur le terrain par les usines."}
                     ]
                 }
             ],
@@ -156,12 +225,24 @@ def show_system3():
                     "id": "eco_1",
                     "category": "💰 Économie",
                     "title": "La Banque du Canada confirme que la hausse des prix est enfin rentrée dans l'ordre",
-                    "summary": "Dans son dernier rapport, la banque centrale a annoncé que l'inflation est revenue s'est stabilisée solidement autour de sa cible idéale de 2 pour cent. Cette bonne nouvelle signifie que la vie quotidienne devient plus prévisible et que le coût de la vie ne s'emballe plus de façon anormale. Pour les familles comme pour les entreprises, cela offre un climat beaucoup plus stable pour planifier les budgets et les achats importants des prochains mois.",
+                    "summary": "Dans son dernier rapport, la banque centrale a annoncé que l'inflation est revenue se stabiliser solidement autour de sa cible idéale de 2 pour cent. Cette bonne nouvelle signifie que la vie quotidienne devient plus prévisible et que le coût de la vie ne s'emballe plus de façon anormale. Pour les familles comme pour les entreprises, cela offre un climat beaucoup plus stable pour planifier les budgets et les achats importants des prochains mois.",
                     "time": "Il y a 1 h",
                     "details": {
-                        "probleme": "Après les chocs économiques mondiaux de la période post-pandémique, l'inflation s'était emballée, réduisant le pouvoir d'achat des consommateurs et créant une incertitude totale pour les investissements des entreprises.",
-                        "mecanisme": "La Banque du Canada a maintenu des taux directeurs élevés pendant plusieurs trimestres, ce qui a eu pour effet de ralentir l'emprunt excessif, de calmer la surchauffe de la demande et de ramener l'Indice des prix à la consommation (IPC) pile dans sa zone cible saine.",
-                        "pourquoi_important": "La stabilisation des prix redonne de la visibilité financière aux entreprises pour calculer leurs coûts de revient et planifier leurs investissements à long terme sans crainte de soubresauts monétaires.",
+                        "probleme": (
+                            "Au lendemain des perturbations mondiales de la période post-pandémique, l'inflation s'était emballée de "
+                            "manière spectaculaire, grugeant le pouvoir d'achat des consommateurs et créant un climat d'incertitude "
+                            "total qui paralysait les décisions d'investissement à long terme des entreprises."
+                        ),
+                        "mecanisme": (
+                            "Pour contrer ce phénomène, la Banque du Canada a maintenu ses taux directeurs à un niveau élevé pendant "
+                            "plusieurs trimestres consécutifs. Cette action a eu pour effet direct de freiner l'accès au crédit facile, "
+                            "de calmer la surchauffe de la demande globale et de ramener l'Indice des prix à la consommation (IPC) "
+                            "pile dans la zone de confort saine visée."
+                        ),
+                        "pourquoi_important": (
+                            "Le retour du calme sur les prix redonne de la visibilité financière aux entreprises pour calculer leurs "
+                            "coûts de production et planifier leurs projets d'expansion sans craindre de turbulences monétaires."
+                        ),
                         "table": pd.DataFrame({
                             "Élément": ["Indicateur", "Date", "Chiffre actuel", "Tendance"],
                             "Information": ["Inflation au Canada", "30 août 2026", "2.1 %", "Stable et calme"]
@@ -283,9 +364,20 @@ def show_system3():
                 "summary": "Apple vient de présenter une mise à jour importante de ses logiciels qui renforce l'utilisation de l'intelligence artificielle directement sur les téléphones et les ordinateurs. Cette nouveauté simplifie la vie des usagers au quotidien tout en protégeant mieux leurs données personnelles. Pour les investisseurs, cela stimule la demande pour les nouveaux modèles d'appareils et consolide la position de l'entreprise sur le marché technologique mondial.",
                 "time": "Il y a 3 h",
                 "details": {
-                    "probleme": "Apple faisait face à des critiques sur son retard perçu dans l'intégration grand public de l'intelligence artificielle générative par rapport à ses concurrents, tout en voulant préserver sa politique stricte de confidentialité.",
-                    "mecanisme": "L'entreprise a déployé une architecture hybride qui exécute des modèles légers directement sur la puce de l'appareil pour les tâches courantes, et utilise un cloud sécurisé dédié pour les calculs lourds.",
-                    "pourquoi_important": "Cela relance l'attrait pour le matériel (iPhone, Mac) et rassure les investisseurs sur la capacité d'Apple à monétiser l'ère de l'IA.",
+                    "probleme": (
+                        "Apple faisait face à des critiques insistantes sur son retard perçu dans l'intégration grand public "
+                        "de l'intelligence artificielle générative par rapport à ses rivaux, tout en exigeant de maintenir "
+                        "sa politique interne de confidentialité stricte des données."
+                    ),
+                    "mecanisme": (
+                        "L'entreprise a mis en place une architecture hybride intelligente : les petits modèles d'IA tournent "
+                        "directement en local sur la puce de l'appareil pour les requêtes de tous les jours, tandis qu'un "
+                        "serveur cloud hautement sécurisé est sollicité uniquement pour les calculs les plus lourds."
+                    ),
+                    "pourquoi_important": (
+                        "Cela redynamise l'intérêt des acheteurs pour le matériel (iPhone, Mac) et rassure les investisseurs "
+                        "sur la capacité de l'entreprise à monétiser durablement l'ère de l'intelligence artificielle."
+                    ),
                     "table": pd.DataFrame({"Métrique": ["Secteur", "Impact ventes"], "Valeur": ["Appareils mobiles", "Hausse de la demande"]}),
                     "impact": "Action AAPL : Solide et rassurante",
                     "futur": "Suivi attentif des chiffres de vente lors de la sortie des prochains produits en magasin.",
@@ -299,9 +391,18 @@ def show_system3():
                 "summary": "L'entreprise Cognetivity Neurosciences poursuit le déploiement de sa plateforme numérique d'évaluation de la santé cérébrale dans plusieurs cliniques partenaires. Cette solution aide les professionnels de la santé à repérer plus rapidement les troubles cognitifs grâce à des tests sur tablette simples et rapides. Les marchés surveillent de près l'adoption de cet outil par le réseau médical.",
                 "time": "Il y a 5 h",
                 "details": {
-                    "probleme": "Le dépistage traditionnel des troubles de la mémoire est long, coûteux et dépend de tests psychologiques subjectifs réalisés en cabinet spécialisé.",
-                    "mecanisme": "Cognetivity utilise une application sur tablette basée sur la science cognitive qui teste les réflexes visuels du cerveau en quelques minutes pour détecter des anomalies.",
-                    "pourquoi_important": "Cela permet un diagnostic beaucoup plus précoce à grande échelle dans les cliniques générales, ce qui intéresse fortement le secteur de la santé.",
+                    "probleme": (
+                        "Les tests traditionnels servant à dépister les problèmes cognitifs et de mémoire sont longs, coûteux, "
+                        "et reposent entièrement sur des questionnaires psychologiques subjectifs menés en clinique spécialisée."
+                    ),
+                    "mecanisme": (
+                        "Cognetivity exploite une application sur tablette interactive basée sur la science cognitive qui mesure "
+                        "avec précision la vitesse des réflexes visuels du cerveau en quelques minutes pour détecter des anomalies."
+                    ),
+                    "pourquoi_important": (
+                        "Cela permet de réaliser des diagnostics précoces à grande échelle directement chez les médecins de famille, "
+                        "ce qui intéresse fortement le secteur de la santé."
+                    ),
                     "table": pd.DataFrame({"Métrique": ["Domaine", "Statut commercial"], "Valeur": ["Santé numérique", "Expansion des cliniques"]}),
                     "impact": "Action CGNT.V : Potentiel de croissance lié au secteur médical",
                     "futur": "Évaluation des retombées des nouveaux contrats signés dans le réseau de la santé.",
@@ -315,9 +416,17 @@ def show_system3():
                 "summary": "Nvidia a dévoilé une nouvelle génération de puces informatiques conçues spécialement pour faire tourner les modèles d'intelligence artificielle les plus lourds. Ces processeurs offrent une puissance de calcul décuplée tout en consommant moins d'électricité par opération. Les plus grands centres de données du monde entier se bousculent pour s'en procurer.",
                 "time": "Il y a 2 h",
                 "details": {
-                    "probleme": "La complexité croissante des modèles de langage demande une puissance de calcul monstrueuse que les anciens processeurs ne pouvaient plus suivre sans surchauffer et consommer trop d'énergie.",
-                    "mecanisme": "Nvidia conçoit des architectures de puces spécialisées en traitement parallèle massif, associées à des interconnexions à très haut débit pour relier des milliers de processeurs entre eux.",
-                    "pourquoi_important": "Cela permet aux géants du web de faire tourner des intelligences artificielles géantes plus rapidement et à moindre coût énergétique.",
+                    "probleme": (
+                        "La taille et la complexité des grands modèles d'intelligence artificielle exigent une puissance de calcul "
+                        "colossale que les anciens processeurs ne pouvaient plus fournir sans surchauffer et consommer trop d'énergie."
+                    ),
+                    "mecanisme": (
+                        "Nvidia conçoit des processeurs graphiques ultra-spécialisés en traitement parallèle massif, reliés par des "
+                        "liens à très haut débit pour synchroniser des milliers de puces en même temps."
+                    ),
+                    "pourquoi_important": (
+                        "Cela permet aux géants du web de faire tourner des intelligences artificielles géantes plus rapidement et à moindre coût."
+                    ),
                     "table": pd.DataFrame({"Métrique": ["Performance", "Efficacité"], "Valeur": ["3x plus rapide", "Moins énergivore"]}),
                     "impact": "Action NVDA : Position dominante confirmée",
                     "futur": "Livraisons massives prévues pour les grands géants du web au cours du prochain trimestre.",
@@ -331,9 +440,17 @@ def show_system3():
                 "summary": "Le fonds négocié en bourse ROBO enregistre de bons résultats grâce à l'automatisation accélérée des chaînes de fabrication à travers le monde. Les entreprises manufacturières investissent massivement dans les robots intelligents et les capteurs pour compenser le manque de main-d'œuvre. Ce fonds diversifié permet de suivre l'ensemble de cette industrie en pleine transformation.",
                 "time": "Il y a 4 h",
                 "details": {
-                    "probleme": "La pénurie de main-d'œuvre chronique et la hausse des coûts salariaux poussent les usines à chercher des solutions d'automatisation pour rester rentables.",
-                    "mecanisme": "L'ETF regroupe et investit dans les meilleures entreprises mondiales de robotique, d'intelligence artificielle industrielle et de capteurs, répartissant ainsi le risque financier sur l'ensemble du secteur.",
-                    "pourquoi_important": "Il offre un moyen simple de profiter de la croissance globale de l'industrie de la robotique sans avoir à choisir une seule action en particulier.",
+                    "probleme": (
+                        "La pénurie chronique de main-d'œuvre et la hausse des salaires poussent les usines à se tourner vers "
+                        "l'automatisation complète pour maintenir leur rentabilité."
+                    ),
+                    "mecanisme": (
+                        "Cet ETF investit de manière répartie dans les meilleures entreprises mondiales de robotique, d'intelligence "
+                        "artificielle industrielle et de capteurs, ce qui permet de diversifier les risques financiers."
+                    ),
+                    "pourquoi_important": (
+                        "Il offre une exposition directe à la croissance de toute l'industrie de la robotique sans dépendre d'une seule action."
+                    ),
                     "table": pd.DataFrame({"Métrique": ["Type de placement", "Secteur cible"], "Valeur": ["ETF indiciel diversifié", "Robotique et Automatisation"]}),
                     "impact": "Action ROBO : Croissance stable portée par l'industrie",
                     "futur": "Poursuite de la demande en équipements robotisés dans les secteurs de l'automobile et de l'électronique.",
@@ -355,14 +472,14 @@ def show_system3():
                 if b2.button("📰 Articles reliés", key=f"rel_stock_{stock['ticker']}"):
                     show_related_articles_modal(stock)
 
-    # --- ONGLET 2 : PERSONNALISER (CORRIGÉ POUR SUPPRESSION ET SAUVEGARDE) ---
+    # --- ONGLET 2 : PERSONNALISER (CORRIGÉ RADICALEMENT POUR LE REBOOT / MULTISELECT) ---
     with tabs[1]:
         st.title("⚙️ PERSONNALISATION")
         st.write("Ajustez vos catégories, supprimez celles qui ne vous intéressent plus et gérez vos intérêts de veille.")
         st.divider()
         
-        # Ajout d'une catégorie
-        new_cat_input = st.text_input("Ajouter une nouvelle catégorie (ex: 🧬 Santé)")
+        # Formulaire d'ajout de catégorie
+        new_cat_input = st.text_input("Ajouter une nouvelle catégorie (ex: 🧬 Santé)", key="input_new_cat")
         if st.button("➕ Ajouter la catégorie"):
             if new_cat_input and new_cat_input not in st.session_state.categories:
                 st.session_state.categories[new_cat_input] = []
@@ -372,47 +489,46 @@ def show_system3():
         st.divider()
         st.subheader("📁 Gestion de vos catégories et intérêts actuels")
         
-        # Gestion propre avec copie de liste pour éviter les erreurs de modification en boucle
-        for cat, interests in list(st.session_state.categories.items()):
+        # On fait une copie des clés pour itérer proprement
+        for cat in list(st.session_state.categories.keys()):
             with st.expander(f"📁 {cat}", expanded=True):
                 
-                # Formulaire ou boutons de suppression de catégorie
-                col_del1, col_del2 = st.columns([3, 1])
-                with col_del2:
-                    if st.button("🗑️ Supprimer", key=f"del_cat_{cat}"):
-                        del st.session_state.categories[cat]
-                        if cat in st.session_state.news_database:
-                            del st.session_state.news_database[cat]
-                        st.success(f"Catégorie '{cat}' supprimée avec succès !")
-                        st.rerun()
-
-                # Gestion des intérêts avec sauvegarde réelle dans st.session_state
-                current_interests = st.session_state.categories[cat]
-                
-                updated_interests = st.multiselect(
-                    f"Intérêts suivis pour {cat}",
-                    options=current_interests,
-                    default=current_interests,
-                    key=f"ms_{cat}"
-                )
-                
-                # Mise à jour immédiate si l'utilisateur décoche (supprime) un intérêt
-                if updated_interests != current_interests:
-                    st.session_state.categories[cat] = updated_interests
+                # Bouton de suppression de catégorie
+                if st.button("🗑️ Supprimer cette catégorie", key=f"del_cat_{cat}"):
+                    del st.session_state.categories[cat]
+                    if cat in st.session_state.news_database:
+                        del st.session_state.news_database[cat]
+                    st.success(f"Catégorie '{cat}' supprimée avec succès !")
                     st.rerun()
 
-                # Ajouter un nouvel intérêt
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    new_interest = st.text_input(f"Ajouter un intérêt dans {cat}", key=f"new_int_{cat}", placeholder="Taper un intérêt...")
-                with col2:
-                    st.write("") # Espacement visuel
-                    st.write("")
-                    if st.button("Ajouter", key=f"btn_add_{cat}"):
-                        if new_interest and new_interest not in st.session_state.categories[cat]:
-                            st.session_state.categories[cat].append(new_interest)
-                            st.success("Intérêt ajouté !")
-                            st.rerun()
+                # Gestion propre des intérêts avec un formulaire pour éviter le rechargement intempestif
+                current_interests = st.session_state.categories[cat]
+                
+                with st.form(key=f"form_cat_{cat}"):
+                    st.write(f"Modifier les intérêts pour **{cat}** :")
+                    
+                    # Multiselect natif
+                    selected_interests = st.multiselect(
+                        "Sélectionnez les intérêts à conserver :",
+                        options=current_interests,
+                        default=current_interests,
+                        key=f"ms_form_{cat}"
+                    )
+                    
+                    # Champ pour ajouter un nouvel intérêt dans cette catégorie
+                    new_interest_item = st.text_input("Ajouter un nouvel intérêt ici :", key=f"input_add_{cat}")
+                    
+                    submitted = st.form_submit_button("Enregistrer les modifications")
+                    if submitted:
+                        # On met à jour la liste avec ce qui a été gardé
+                        updated_list = list(selected_interests)
+                        # Si l'utilisateur a écrit un nouvel intérêt, on l'ajoute
+                        if new_interest_item and new_interest_item not in updated_list:
+                            updated_list.append(new_interest_item)
+                        
+                        st.session_state.categories[cat] = updated_list
+                        st.success("Modifications enregistrées avec succès !")
+                        st.rerun()
 
     # --- ONGLET 3 : PORTEFEUILLE ---
     with tabs[2]:
