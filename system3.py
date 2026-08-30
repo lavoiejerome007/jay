@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# --- 1. GESTION DE L'ÉTAT ET DES DONNÉES ---
-def init_session_state():
-    # Catégories et intérêts selon ta structure initiale
+def show_system3():
+    # --- 1. GESTION DE L'ÉTAT ET DES DONNÉES ---
     if "categories" not in st.session_state:
         st.session_state.categories = {
             "🌎 Monde": ["Géopolitique", "Guerres", "Politique internationale", "Chine"],
@@ -14,7 +13,6 @@ def init_session_state():
             "💰 Économie": ["Inflation", "Taux d'intérêt", "Banque du Canada", "Dollar canadien"]
         }
 
-    # Portefeuille connecté (simulé depuis le système de gestion d'actifs)
     if "portfolio" not in st.session_state:
         st.session_state.portfolio = {
             "XEQT": {"nom": "iShares Core Equity ETF", "shares": 120},
@@ -22,7 +20,6 @@ def init_session_state():
             "NVDA": {"nom": "NVIDIA Corp.", "shares": 15}
         }
 
-    # Base de données complète avec des résumés de 4-5 lignes et des fiches détaillées exhaustives
     if "news_database" not in st.session_state:
         st.session_state.news_database = {
             "top": [
@@ -179,55 +176,55 @@ def init_session_state():
             ]
         }
 
-# --- 2. FENÊTRES CONTEXTUELLES (MODALS DÉTAILLÉES) ---
-@st.dialog("📖 Fiche d'Analyse Détaillée", width="large")
-def show_full_details(item):
-    det = item["details"]
-    st.subheader(item["title"])
-    st.caption(f"Catégorie : {item['category']} • Publié {item['time']}")
-    
-    st.markdown("### 🧠 Ce qui s'est réellement passé")
-    st.write(det["event"])
-    
-    st.markdown("### 📅 Contexte")
-    st.write(det["context"])
-    
-    st.markdown("### 🔍 Pourquoi c'est important")
-    st.write(det["importance"])
-    
-    st.markdown("### 📊 Données importantes")
-    st.dataframe(det["table"], hide_index=True, use_container_width=True)
-    
-    st.markdown("### 🌎 Impact")
-    st.text(det["impact"])
-    
-    st.markdown("### 🔮 Et ensuite ?")
-    st.write(det["futur"])
-    
-    st.markdown("### 📰 Sources")
-    for src in det["sources"]:
-        st.markdown(f"- {src}")
+    # --- 2. MODALS DÉTAILLÉES ---
+    @st.dialog("📖 Fiche d'Analyse Détaillée", width="large")
+    def show_full_details(item):
+        det = item["details"]
+        st.subheader(item["title"])
+        st.caption(f"Catégorie : {item['category']} • Publié {item['time']}")
+        
+        st.markdown("### 🧠 Ce qui s'est réellement passé")
+        st.write(det["event"])
+        
+        st.markdown("### 📅 Contexte")
+        st.write(det["context"])
+        
+        st.markdown("### 🔍 Pourquoi c'est important")
+        st.write(det["importance"])
+        
+        st.markdown("### 📊 Données importantes")
+        st.dataframe(det["table"], hide_index=True, use_container_width=True)
+        
+        st.markdown("### 🌎 Impact")
+        st.text(det["impact"])
+        
+        st.markdown("### 🔮 Et ensuite ?")
+        st.write(det["futur"])
+        
+        st.markdown("### 📰 Sources")
+        for src in det["sources"]:
+            st.markdown(f"- {src}")
 
-@st.dialog("📰 Articles Reliés pour Approfondir", width="large")
-def show_related_articles_modal(item):
-    st.subheader(f"Dossier de lecture : {item['title']}")
-    st.write("Sélection d'articles recommandés pour comprendre le sujet en profondeur, adaptés même aux débutants :")
-    
-    for i, art in enumerate(item["related"], 1):
-        with st.container(border=True):
-            st.markdown(f"#### {i}. {art['titre']}")
-            st.caption(f"📍 {art['source']} — ⏱️ {art['temps']} de lecture")
-            st.write(f"**Pourquoi cet article est intéressant :** {art['raison']}")
-            st.button("Consulter l'article original ↗", key=f"read_src_{item['id']}_{i}")
+    @st.dialog("📰 Articles Reliés pour Approfondir", width="large")
+    def show_related_articles_modal(item):
+        st.subheader(f"Dossier de lecture : {item['title']}")
+        st.write("Sélection d'articles recommandés pour comprendre le sujet en profondeur, adaptés même aux débutants :")
+        
+        for i, art in enumerate(item["related"], 1):
+            with st.container(border=True):
+                st.markdown(f"#### {i}. {art['titre']}")
+                st.caption(f"📍 {art['source']} — ⏱️ {art['temps']} de lecture")
+                st.write(f"**Pourquoi cet article est intéressant :** {art['raison']}")
+                st.button("Consulter l'article original ↗", key=f"read_src_{item['id']}_{i}")
 
-# --- 3. INTERFACE PRINCIPALE ---
-def main():
-    init_session_state()
-    
-    st.sidebar.title("Navigation")
-    page = st.sidebar.radio("Aller à", ["🏠 Accueil", "⚙️ Personnaliser", "📈 Portefeuille"])
-    
-    if page == "🏠 Accueil":
+    # --- 3. INTERFACE DU SYSTÈME 3 ---
+    if st.button("← Retour au tableau de bord"):
+        st.session_state["current_page"] = "Accueil"
+        st.rerun()
+
+    sub_page = st.sidebar.radio("Navigation Système 3", ["🏠 Actualités", "⚙️ Personnaliser", "📈 Portefeuille"], key="s3_nav")
+
+    if sub_page == "🏠 Actualités":
         st.title("MON BRIEFING")
         st.caption("30 août 2026")
         st.divider()
@@ -343,7 +340,7 @@ def main():
                 if b2.button("📰 Articles reliés", key=f"rel_stock_{stock['ticker']}"):
                     show_related_articles_modal(stock)
 
-    elif page == "⚙️ Personnaliser":
+    elif sub_page == "⚙️ Personnaliser":
         st.title("⚙️ PERSONNALISATION")
         st.write("Ajustez vos catégories et gérez vos intérêts de veille.")
         st.divider()
@@ -370,14 +367,14 @@ def main():
                 if st.button(f"Ajouter à {cat}", key=f"btn_add_{cat}"):
                     if new_interest and new_interest not in st.session_state.categories[cat]:
                         st.session_state.categories[cat].append(new_interest)
-                        st.success("Intérêt ajouté avec succès !")  # Correction syntaxique ici
+                        st.success("Intérêt ajouté avec succès !")
                         st.rerun()
 
                 clean_interests = [i for i in updated_interests if i != "Ajouter un intérêt..."]
                 if clean_interests != st.session_state.categories[cat]:
                     st.session_state.categories[cat] = clean_interests
 
-    elif page == "📈 Portefeuille":
+    elif sub_page == "📈 Portefeuille":
         st.title("📈 PORTEFEUILLE")
         st.write("Gestion de vos titres actifs connectés au système de veille.")
         st.divider()
@@ -388,6 +385,3 @@ def main():
                 st.write(f"Actions détenues : {data['shares']}")
         
         st.info("Le portefeuille est synchronisé automatiquement avec la section Investissements de votre page d'accueil.")
-
-if __name__ == "__main__":
-    main()
