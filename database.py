@@ -270,13 +270,22 @@ def delete_stock_transaction(trans_id):
 # SYSTÈME 3 — PRÉFÉRENCES
 # ==========================================================
 
+SYSTEM3_MARKER = "__SYSTEM3_INITIALIZED__"
+
+
 def load_system3_preferences(username):
     """
     Charge les catégories et intérêts permanents d'un utilisateur
     depuis Google Sheets.
-    """
 
-    client = get_gsheet_client()
+    IMPORTANT :
+    - Une catégorie peut avoir zéro intérêt.
+    - Une ligne avec interest vide signifie volontairement
+      que la catégorie existe sans intérêt précis.
+    - Un marqueur permet de distinguer un utilisateur déjà
+      configuré d'un nouvel utilisateur qui n'a encore aucune
+      catégorie.
+    """
 
     default_categories = {
         "🌎 Monde": [
@@ -310,6 +319,8 @@ def load_system3_preferences(username):
         ]
     }
 
+    client = get_gsheet_client()
+
     if not client or not username:
         return default_categories
 
@@ -322,20 +333,21 @@ def load_system3_preferences(username):
 
         rows = sheet.get_all_records()
 
+        username_str = str(username).strip()
+
         user_rows = [
             row for row in rows
-            if str(row.get("username", "")).strip() == str(username).strip()
+            if str(row.get("username", "")).strip() == username_str
         ]
 
-        # Nouvel utilisateur :
-        # on crée ses préférences par défaut
+        # --------------------------------------------------
+        # Nouvel utilisateur
+        # --------------------------------------------------
         if not user_rows:
-
             save_system3_preferences(
                 username,
                 default_categories
             )
-
             return default_categories
 
         categories = {}
@@ -350,12 +362,19 @@ def load_system3_preferences(username):
                 row.get("interest", "")
             ).strip()
 
+            # Ligne technique servant seulement à indiquer
+            # que l'utilisateur a déjà configuré Système 3.
+            if category == SYSTEM3_MARKER:
+                continue
+
             if not category:
                 continue
 
+            # La catégorie existe même si son intérêt est vide.
             if category not in categories:
                 categories[category] = []
 
+            # Un intérêt vide ne doit PAS être ajouté.
             if interest and interest not in categories[category]:
                 categories[category].append(interest)
 
@@ -369,6 +388,15 @@ def save_system3_preferences(username, categories):
     """
     Sauvegarde définitivement les préférences de Système 3
     dans Google Sheets.
+
+    CORRECTIONS IMPORTANTES :
+    1. Une catégorie sans intérêt est sauvegardée avec une
+       ligne dont la colonne interest est vide.
+    2. Si toutes les catégories sont supprimées, un marqueur
+       est conservé pour empêcher load_system3_preferences()
+       de recréer les catégories par défaut.
+    3. Les anciennes préférences de cet utilisateur sont
+       entièrement remplacées par le nouvel état.
     """
 
     client = get_gsheet_client()
@@ -377,7 +405,6 @@ def save_system3_preferences(username, categories):
         return False, "Google Sheets non connecté."
 
     try:
-
         sheet = get_or_create_worksheet(
             client,
             "System3Preferences",
@@ -386,20 +413,58 @@ def save_system3_preferences(username, categories):
 
         rows = sheet.get_all_values()
 
+        username_str = str(username).strip()
+
         # --------------------------------------------------
-        # SUPPRIMER LES ANCIENNES PRÉFÉRENCES DE L'UTILISATEUR
+        # SUPPRIMER LES ANCIENNES PRÉFÉRENCES
         # --------------------------------------------------
 
         rows_to_delete = []
 
         for i, row in enumerate(rows[1:], start=2):
 
-            if len(row) > 0 and str(row[0]).strip() == str(username).strip():
+            if (
+                len(row) > 0
+                and str(row[0]).strip() == username_str
+            ):
                 rows_to_delete.append(i)
 
-        # Supprimer du bas vers le haut
+        # Suppression du bas vers le haut.
         for row_number in reversed(rows_to_delete):
             sheet.delete_rows(row_number)
+
+        # --------------------------------------------------
+        # NORMALISER LES CATÉGORIES
+        # --------------------------------------------------
+
+        if categories is None:
+            categories = {}
+
+        clean_categories = {}
+
+        for category, interests in categories.items():
+
+            category = str(category).strip()
+
+            if not category:
+                continue
+
+            if category == SYSTEM3_MARKER:
+                continue
+
+            if interests is None:
+                interests = []
+
+            clean_interests = []
+
+            for interest in interests:
+
+                interest = str(interest).strip()
+
+                if interest and interest not in clean_interests:
+                    clean_interests.append(interest)
+
+            clean_categories[category] = clean_interests
 
         # --------------------------------------------------
         # AJOUTER LES NOUVELLES PRÉFÉRENCES
@@ -407,18 +472,41 @@ def save_system3_preferences(username, categories):
 
         new_rows = []
 
-        for category, interests in categories.items():
+        for category, interests in clean_categories.items():
 
-            for interest in interests:
+            # IMPORTANT :
+            # Même sans intérêt, on écrit la catégorie.
+            if not interests:
 
                 new_rows.append([
                     username,
                     category,
-                    interest
+                    ""
                 ])
 
-        if new_rows:
-            sheet.append_rows(new_rows)
+            else:
+
+                for interest in interests:
+
+                    new_rows.append([
+                        username,
+                        category,
+                        interest
+                    ])
+
+        # --------------------------------------------------
+        # SI L'UTILISATEUR A SUPPRIMÉ TOUTES SES CATÉGORIES
+        # --------------------------------------------------
+
+        if not new_rows:
+
+            new_rows.append([
+                username,
+                SYSTEM3_MARKER,
+                ""
+            ])
+
+        sheet.append_rows(new_rows)
 
         return True, ""
 
