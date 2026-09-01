@@ -265,3 +265,162 @@ def delete_stock_transaction(trans_id):
                     return True, ""
         except Exception as e: return False, str(e)
     return False, "Erreur."
+
+# ==========================================================
+# SYSTÈME 3 — PRÉFÉRENCES
+# ==========================================================
+
+def load_system3_preferences(username):
+    """
+    Charge les catégories et intérêts permanents d'un utilisateur
+    depuis Google Sheets.
+    """
+
+    client = get_gsheet_client()
+
+    default_categories = {
+        "🌎 Monde": [
+            "Géopolitique",
+            "Guerres",
+            "Politique internationale",
+            "Chine"
+        ],
+        "🇨🇦 Canada": [
+            "Politique fédérale",
+            "Économie canadienne",
+            "Énergie"
+        ],
+        "⚜️ Québec": [
+            "Politique québécoise",
+            "Hydro-Québec",
+            "Économie du Québec"
+        ],
+        "🤖 Robotique": [
+            "Robotique humanoïde",
+            "ROS2",
+            "Vision par ordinateur",
+            "Automatisation industrielle",
+            "Robots industriels"
+        ],
+        "💰 Économie": [
+            "Inflation",
+            "Taux d'intérêt",
+            "Banque du Canada",
+            "Dollar canadien"
+        ]
+    }
+
+    if not client or not username:
+        return default_categories
+
+    try:
+        sheet = get_or_create_worksheet(
+            client,
+            "System3Preferences",
+            ["username", "category", "interest"]
+        )
+
+        rows = sheet.get_all_records()
+
+        user_rows = [
+            row for row in rows
+            if str(row.get("username", "")).strip() == str(username).strip()
+        ]
+
+        # Nouvel utilisateur :
+        # on crée ses préférences par défaut
+        if not user_rows:
+
+            save_system3_preferences(
+                username,
+                default_categories
+            )
+
+            return default_categories
+
+        categories = {}
+
+        for row in user_rows:
+
+            category = str(
+                row.get("category", "")
+            ).strip()
+
+            interest = str(
+                row.get("interest", "")
+            ).strip()
+
+            if not category:
+                continue
+
+            if category not in categories:
+                categories[category] = []
+
+            if interest and interest not in categories[category]:
+                categories[category].append(interest)
+
+        return categories
+
+    except Exception:
+        return default_categories
+
+
+def save_system3_preferences(username, categories):
+    """
+    Sauvegarde définitivement les préférences de Système 3
+    dans Google Sheets.
+    """
+
+    client = get_gsheet_client()
+
+    if not client or not username:
+        return False, "Google Sheets non connecté."
+
+    try:
+
+        sheet = get_or_create_worksheet(
+            client,
+            "System3Preferences",
+            ["username", "category", "interest"]
+        )
+
+        rows = sheet.get_all_values()
+
+        # --------------------------------------------------
+        # SUPPRIMER LES ANCIENNES PRÉFÉRENCES DE L'UTILISATEUR
+        # --------------------------------------------------
+
+        rows_to_delete = []
+
+        for i, row in enumerate(rows[1:], start=2):
+
+            if len(row) > 0 and str(row[0]).strip() == str(username).strip():
+                rows_to_delete.append(i)
+
+        # Supprimer du bas vers le haut
+        for row_number in reversed(rows_to_delete):
+            sheet.delete_rows(row_number)
+
+        # --------------------------------------------------
+        # AJOUTER LES NOUVELLES PRÉFÉRENCES
+        # --------------------------------------------------
+
+        new_rows = []
+
+        for category, interests in categories.items():
+
+            for interest in interests:
+
+                new_rows.append([
+                    username,
+                    category,
+                    interest
+                ])
+
+        if new_rows:
+            sheet.append_rows(new_rows)
+
+        return True, ""
+
+    except Exception as e:
+        return False, str(e)
