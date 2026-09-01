@@ -14,6 +14,7 @@ from database import (
     save_system3_preferences
 )
 
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -25,11 +26,11 @@ GOOGLE_NEWS_RSS = (
 
 
 # ============================================================
-# OUTILS GÉNÉRAUX
+# NETTOYAGE
 # ============================================================
 
 def clean_text(text):
-    """Nettoie le texte provenant du flux RSS."""
+    """Nettoie le texte provenant du RSS."""
 
     if not text:
         return ""
@@ -41,6 +42,10 @@ def clean_text(text):
     return text.strip()
 
 
+# ============================================================
+# DATE
+# ============================================================
+
 def get_relative_time(date_string):
     """Convertit une date RSS en temps relatif."""
 
@@ -48,12 +53,17 @@ def get_relative_time(date_string):
         return ""
 
     try:
+
         dt = datetime.strptime(
             date_string,
             "%a, %d %b %Y %H:%M:%S %Z"
-        ).replace(tzinfo=timezone.utc)
+        ).replace(
+            tzinfo=timezone.utc
+        )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(
+            timezone.utc
+        )
 
         seconds = int(
             (now - dt).total_seconds()
@@ -89,22 +99,36 @@ def get_relative_time(date_string):
 
 def fetch_google_news(query, max_results=10):
     """
-    Recherche de vraies nouvelles avec Google News RSS.
+    Recherche de vrais articles avec Google News RSS.
 
-    Les titres, sources, dates et liens viennent du flux RSS.
+    Les informations suivantes viennent directement du flux :
+    - titre
+    - source
+    - date
+    - description
+    - lien
     """
 
     try:
 
+        if not query:
+            return []
+
         url = GOOGLE_NEWS_RSS.format(
-            query=quote_plus(query)
+            query=quote_plus(str(query))
         )
 
         response = requests.get(
             url,
-            timeout=10,
+            timeout=15,
             headers={
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) "
+                    "Chrome/151.0 Safari/537.36"
+                )
             }
         )
 
@@ -121,7 +145,7 @@ def fetch_google_news(query, max_results=10):
             title_node = item.find("title")
             link_node = item.find("link")
             description_node = item.find("description")
-            pub_date_node = item.find("pubDate")
+            date_node = item.find("pubDate")
             source_node = item.find("source")
 
             title = clean_text(
@@ -144,19 +168,25 @@ def fetch_google_news(query, max_results=10):
             )
 
             date = (
-                pub_date_node.text
-                if pub_date_node is not None
+                date_node.text
+                if date_node is not None
                 else ""
             )
 
             source = clean_text(
                 source_node.text
                 if source_node is not None
-                else "Source inconnue"
+                else ""
             )
 
-            if not title or not link:
+            if not title:
                 continue
+
+            if not link:
+                continue
+
+            if not source:
+                source = "Source inconnue"
 
             articles.append({
                 "title": title,
@@ -176,27 +206,48 @@ def fetch_google_news(query, max_results=10):
         return []
 
 
+# ============================================================
+# DUPLICATION
+# ============================================================
+
+def normalize_title(title):
+
+    title = clean_text(title).lower()
+
+    title = re.sub(
+        r"[^a-z0-9àâçéèêëîïôûùüÿñæœ\s]",
+        "",
+        title
+    )
+
+    title = re.sub(
+        r"\s+",
+        " ",
+        title
+    )
+
+    return title.strip()
+
+
 def remove_duplicates(articles):
-    """Supprime les articles avec le même titre."""
 
     seen = set()
     result = []
 
     for article in articles:
 
-        key = re.sub(
-            r"[^a-z0-9]",
-            "",
-            article.get("title", "").lower()
+        title = normalize_title(
+            article.get("title", "")
         )
 
-        if not key:
+        if not title:
             continue
 
-        if key in seen:
+        if title in seen:
             continue
 
-        seen.add(key)
+        seen.add(title)
+
         result.append(article)
 
     return result
@@ -207,11 +258,6 @@ def remove_duplicates(articles):
 # ============================================================
 
 def get_portfolio_holdings():
-    """
-    Récupère les titres réellement détenus dans Système 2.
-
-    Les données viennent de StockTransactions.
-    """
 
     try:
 
@@ -227,28 +273,67 @@ def get_portfolio_holdings():
         if df is None or df.empty:
             return {}
 
-        # Seulement les transactions de l'utilisateur connecté
-        df = df[
-            df["owner"].astype(str)
-            == str(username)
+        # ----------------------------------------------------
+        # S'assurer que les colonnes existent
+        # ----------------------------------------------------
+
+        required_columns = [
+            "owner",
+            "ticker",
+            "quantity",
+            "trans_type"
         ]
 
+        for column in required_columns:
+
+            if column not in df.columns:
+
+                if column == "trans_type":
+                    df[column] = "Achat"
+                else:
+                    return {}
+
+        # ----------------------------------------------------
+        # Seulement l'utilisateur connecté
+        # ----------------------------------------------------
+
+        df = df[
+            df["owner"].astype(str).str.strip()
+            == str(username).strip()
+        ]
+
+        if df.empty:
+            return {}
+
         holdings = {}
+
+        # ----------------------------------------------------
+        # Calcul des positions
+        # ----------------------------------------------------
 
         for _, row in df.iterrows():
 
             ticker = str(
-                row.get("ticker", "")
+                row.get(
+                    "ticker",
+                    ""
+                )
             ).strip().upper()
 
             if not ticker:
                 continue
 
             try:
+
                 quantity = float(
-                    row.get("quantity", 0)
+                    row.get(
+                        "quantity",
+                        0
+                    )
                 )
+
             except Exception:
+
                 continue
 
             trans_type = str(
@@ -258,21 +343,30 @@ def get_portfolio_holdings():
                 )
             ).strip()
 
-            if trans_type == "Achat":
+            if trans_type.lower() == "achat":
 
                 holdings[ticker] = (
-                    holdings.get(ticker, 0)
+                    holdings.get(
+                        ticker,
+                        0
+                    )
                     + quantity
                 )
 
-            elif trans_type == "Vente":
+            elif trans_type.lower() == "vente":
 
                 holdings[ticker] = (
-                    holdings.get(ticker, 0)
+                    holdings.get(
+                        ticker,
+                        0
+                    )
                     - quantity
                 )
 
-        # Seulement les titres encore détenus
+        # ----------------------------------------------------
+        # Garder seulement les positions positives
+        # ----------------------------------------------------
+
         holdings = {
             ticker: quantity
             for ticker, quantity
@@ -286,14 +380,14 @@ def get_portfolio_holdings():
         return {}
 
 
+# ============================================================
+# NOUVELLES DU PORTEFEUILLE
+# ============================================================
+
 def get_portfolio_news(
     holdings,
     max_articles_per_ticker=5
 ):
-    """
-    Recherche les vraies nouvelles concernant
-    les titres du portefeuille.
-    """
 
     all_articles = []
 
@@ -325,9 +419,6 @@ def search_news_for_interests(
     interests,
     max_per_interest=5
 ):
-    """
-    Recherche des vraies nouvelles pour chaque intérêt.
-    """
 
     all_articles = []
 
@@ -368,14 +459,16 @@ def get_gemini_client():
 
     try:
 
-        # Si le client existe déjà dans l'application
+        # Si le client existe déjà
+        # dans le fichier appelant
         if "client" in globals():
+
             return globals()["client"]
 
-        # Sinon on tente de le créer ici
         from google import genai
 
         if "GEMINI_API_KEY" not in st.secrets:
+
             return None
 
         return genai.Client(
@@ -385,18 +478,18 @@ def get_gemini_client():
         )
 
     except Exception:
+
         return None
 
+
+# ============================================================
+# RÉSUMÉ IA
+# ============================================================
 
 def get_ai_summary(
     article,
     context=""
 ):
-    """
-    Résume une vraie nouvelle.
-
-    L'IA ne crée pas la nouvelle.
-    """
 
     client = get_gemini_client()
 
@@ -408,16 +501,17 @@ def get_ai_summary(
         )
 
     prompt = f"""
-Tu dois résumer une vraie nouvelle provenant
-d'un flux d'actualité.
+Tu dois résumer une vraie nouvelle.
 
-IMPORTANT :
-- Ne crée aucun fait.
-- N'invente aucune information.
-- Utilise uniquement les informations fournies.
-- Si une information n'est pas disponible,
-  ne l'invente pas.
-- Réponds en français.
+Tu dois utiliser UNIQUEMENT les informations
+présentes dans le titre et le contenu fourni.
+
+INTERDICTIONS :
+- ne pas inventer de faits;
+- ne pas inventer de chiffres;
+- ne pas inventer de citations;
+- ne pas inventer de contexte;
+- ne pas prétendre avoir lu l'article complet.
 
 Titre :
 {article.get("title", "")}
@@ -425,15 +519,23 @@ Titre :
 Source :
 {article.get("source", "")}
 
-Résumé fourni :
+Date :
+{article.get("date", "")}
+
+Contenu fourni :
 {article.get("description", "")}
 
 Contexte :
 {context}
 
-Fais un résumé clair en 3 à 5 phrases.
-Explique ensuite brièvement pourquoi cette nouvelle
-peut être importante.
+Réponds en français.
+
+Fais :
+1. un résumé de 3 à 5 phrases;
+2. explique en 1 ou 2 phrases pourquoi cette nouvelle
+   peut être importante.
+
+Si le contenu fourni est insuffisant, indique-le.
 """
 
     try:
@@ -444,9 +546,11 @@ peut être importante.
         )
 
         if response and response.text:
+
             return response.text.strip()
 
     except Exception:
+
         pass
 
     return article.get(
@@ -455,11 +559,14 @@ peut être importante.
     )
 
 
+# ============================================================
+# ANALYSE DÉTAILLÉE
+# ============================================================
+
 def get_ai_detailed_analysis(
     article,
     context=""
 ):
-    """Produit une analyse détaillée."""
 
     client = get_gemini_client()
 
@@ -470,44 +577,62 @@ def get_ai_detailed_analysis(
 Analyse cette vraie nouvelle.
 
 IMPORTANT :
-- Ne crée aucun fait.
-- Ne crée aucune statistique.
-- Ne présente pas une hypothèse comme un fait.
-- Utilise seulement les informations fournies.
-- Réponds en français.
+Tu dois uniquement utiliser les informations
+qui sont fournies ci-dessous.
 
-TITRE :
+N'invente :
+- aucun fait;
+- aucune statistique;
+- aucune citation;
+- aucune information absente.
+
+Titre :
 {article.get("title", "")}
 
-SOURCE :
+Source :
 {article.get("source", "")}
 
-DATE :
+Date :
 {article.get("date", "")}
 
-RÉSUMÉ :
+Contenu fourni :
 {article.get("description", "")}
 
-CONTEXTE UTILISATEUR :
+Contexte :
 {context}
+
+Réponds en français.
 
 Structure :
 
 ### 1. Ce qui s'est passé
-Résume les faits.
+
+Explique les faits disponibles.
 
 ### 2. Pourquoi c'est important
+
 Explique les conséquences possibles.
 
 ### 3. Qui est concerné
-Entreprises, secteurs, pays ou personnes.
+
+Entreprises, secteurs, pays ou personnes
+si ces informations sont disponibles.
 
 ### 4. Impact possible
+
 Explique les impacts possibles.
-Ne présente aucune prédiction comme une certitude.
+
+Fais clairement la différence entre :
+- les faits;
+- les conséquences possibles;
+- les hypothèses.
 
 ### 5. À retenir
-Donne les points essentiels.
+
+Donne les 3 points essentiels.
+
+Si les informations fournies sont insuffisantes,
+dis-le clairement.
 """
 
     try:
@@ -518,9 +643,11 @@ Donne les points essentiels.
         )
 
         if response and response.text:
+
             return response.text.strip()
 
     except Exception:
+
         pass
 
     return None
@@ -540,6 +667,7 @@ def get_related_articles(article):
     if not title:
         return []
 
+    # Recherche basée sur le vrai titre
     related = fetch_google_news(
         title,
         max_results=10
@@ -547,17 +675,25 @@ def get_related_articles(article):
 
     result = []
 
-    original_title = title.lower()
+    original_title = normalize_title(
+        title
+    )
 
     for item in related:
 
-        if (
-            item["title"].lower()
-            == original_title
-        ):
+        item_title = normalize_title(
+            item.get(
+                "title",
+                ""
+            )
+        )
+
+        if item_title == original_title:
             continue
 
-        result.append(item)
+        result.append(
+            item
+        )
 
         if len(result) >= 5:
             break
@@ -566,7 +702,7 @@ def get_related_articles(article):
 
 
 # ============================================================
-# FENÊTRE : PLUS DE DÉTAILS
+# PLUS DE DÉTAILS
 # ============================================================
 
 def show_full_details(
@@ -581,12 +717,15 @@ def show_full_details(
     def dialog():
 
         st.subheader(
-            article["title"]
+            article.get(
+                "title",
+                "Nouvelle"
+            )
         )
 
         st.caption(
-            f"📰 {article['source']} "
-            f"• 🕐 {article['time']}"
+            f"📰 {article.get('source', '')} "
+            f"• 🕐 {article.get('time', '')}"
         )
 
         if article.get("ticker"):
@@ -602,11 +741,16 @@ def show_full_details(
         ):
 
             st.info(
-                f"🎯 Intérêt : "
+                f"🎯 Cette nouvelle correspond "
+                f"à ton intérêt : "
                 f"**{article['matched_interest']}**"
             )
 
         st.divider()
+
+        # ----------------------------------------------------
+        # RÉSUMÉ
+        # ----------------------------------------------------
 
         st.markdown(
             "### 📝 Résumé"
@@ -621,28 +765,49 @@ def show_full_details(
                 context
             )
 
-        st.write(summary)
-
-        st.divider()
-
-        st.markdown(
-            "### 🔎 Informations de l'article"
-        )
-
-        if article.get(
-            "description"
-        ):
+        if summary:
 
             st.write(
-                article["description"]
+                summary
             )
 
         else:
 
             st.info(
-                "Aucun résumé supplémentaire "
-                "n'est fourni par le flux."
+                "Aucun résumé disponible."
             )
+
+        # ----------------------------------------------------
+        # CONTENU RSS
+        # ----------------------------------------------------
+
+        st.divider()
+
+        st.markdown(
+            "### 🔎 Contenu disponible"
+        )
+
+        description = article.get(
+            "description",
+            ""
+        )
+
+        if description:
+
+            st.write(
+                description
+            )
+
+        else:
+
+            st.info(
+                "Le flux RSS ne fournit pas "
+                "de résumé pour cet article."
+            )
+
+        # ----------------------------------------------------
+        # ANALYSE
+        # ----------------------------------------------------
 
         st.markdown(
             "### 🤖 Analyse"
@@ -673,6 +838,10 @@ def show_full_details(
 
         st.divider()
 
+        # ----------------------------------------------------
+        # ARTICLE ORIGINAL
+        # ----------------------------------------------------
+
         st.link_button(
             "📰 Lire l'article original",
             article["link"],
@@ -683,7 +852,7 @@ def show_full_details(
 
 
 # ============================================================
-# FENÊTRE : ARTICLES RELIÉS
+# ARTICLES RELIÉS
 # ============================================================
 
 def show_related_articles(
@@ -706,13 +875,11 @@ def show_related_articles(
         )
 
         with st.spinner(
-            "Recherche..."
+            "Recherche d'articles reliés..."
         ):
 
-            related = (
-                get_related_articles(
-                    article
-                )
+            related = get_related_articles(
+                article
             )
 
         if not related:
@@ -723,7 +890,7 @@ def show_related_articles(
 
             return
 
-        for i, item in enumerate(
+        for index, item in enumerate(
             related,
             start=1
         ):
@@ -733,7 +900,7 @@ def show_related_articles(
             ):
 
                 st.markdown(
-                    f"### {i}. {item['title']}"
+                    f"### {index}. {item['title']}"
                 )
 
                 st.caption(
@@ -750,7 +917,7 @@ def show_related_articles(
                     )
 
                 st.link_button(
-                    "Lire l'article ↗",
+                    "Lire l'article original ↗",
                     item["link"],
                     use_container_width=True
                 )
@@ -759,7 +926,7 @@ def show_related_articles(
 
 
 # ============================================================
-# SAUVEGARDE DES INTÉRÊTS
+# SAUVEGARDER LES PRÉFÉRENCES
 # ============================================================
 
 def save_current_preferences():
@@ -769,21 +936,98 @@ def save_current_preferences():
     )
 
     if not username:
-        return False, "Utilisateur non connecté."
+
+        return (
+            False,
+            "Utilisateur non connecté."
+        )
 
     categories = st.session_state.get(
         "system3_categories",
         {}
     )
 
-    success, error = (
-        save_system3_preferences(
+    try:
+
+        result = save_system3_preferences(
             username,
             categories
         )
+
+        # Normalement :
+        # (True, "")
+        return result
+
+    except Exception as e:
+
+        return (
+            False,
+            str(e)
+        )
+
+
+# ============================================================
+# CHARGER LES PRÉFÉRENCES
+# ============================================================
+
+def load_current_preferences():
+
+    username = st.session_state.get(
+        "username"
     )
 
-    return success, error
+    if not username:
+        return {}
+
+    # --------------------------------------------------------
+    # IMPORTANT :
+    # si un autre utilisateur vient de se connecter,
+    # on ne doit PAS conserver les intérêts précédents.
+    # --------------------------------------------------------
+
+    loaded_for = st.session_state.get(
+        "system3_preferences_user"
+    )
+
+    if (
+        "system3_categories"
+        not in st.session_state
+        or loaded_for != username
+    ):
+
+        categories = (
+            load_system3_preferences(
+                username
+            )
+        )
+
+        if categories is None:
+
+            categories = {}
+
+        st.session_state[
+            "system3_categories"
+        ] = categories
+
+        st.session_state[
+            "system3_preferences_user"
+        ] = username
+
+        # Les anciennes nouvelles ne correspondent
+        # peut-être plus aux nouveaux intérêts.
+        st.session_state.pop(
+            "system3_interest_news",
+            None
+        )
+
+        st.session_state.pop(
+            "system3_portfolio_news",
+            None
+        )
+
+    return st.session_state[
+        "system3_categories"
+    ]
 
 
 # ============================================================
@@ -791,6 +1035,10 @@ def save_current_preferences():
 # ============================================================
 
 def show_system3():
+
+    # ========================================================
+    # UTILISATEUR
+    # ========================================================
 
     username = st.session_state.get(
         "username"
@@ -805,19 +1053,10 @@ def show_system3():
         return
 
     # ========================================================
-    # CHARGER LES INTÉRÊTS DEPUIS GOOGLE SHEETS
+    # CHARGEMENT PERMANENT
     # ========================================================
 
-    if (
-        "system3_categories"
-        not in st.session_state
-    ):
-
-        st.session_state[
-            "system3_categories"
-        ] = load_system3_preferences(
-            username
-        )
+    categories = load_current_preferences()
 
     # ========================================================
     # TABS
@@ -828,6 +1067,7 @@ def show_system3():
         "⚙️ Mes intérêts",
         "📈 Mon portefeuille"
     ])
+
 
     # ========================================================
     # ACCUEIL
@@ -840,8 +1080,8 @@ def show_system3():
         )
 
         st.caption(
-            "Actualités personnalisées selon tes intérêts "
-            "et ton portefeuille."
+            "Actualités personnalisées selon "
+            "tes intérêts et ton portefeuille."
         )
 
         # ----------------------------------------------------
@@ -868,15 +1108,9 @@ def show_system3():
 
         st.divider()
 
-        # ----------------------------------------------------
+        # ====================================================
         # INTÉRÊTS
-        # ----------------------------------------------------
-
-        categories = (
-            st.session_state[
-                "system3_categories"
-            ]
-        )
+        # ====================================================
 
         all_interests = []
 
@@ -903,6 +1137,10 @@ def show_system3():
 
         else:
 
+            # ------------------------------------------------
+            # PREMIÈRE RECHERCHE
+            # ------------------------------------------------
+
             if (
                 "system3_interest_news"
                 not in st.session_state
@@ -916,7 +1154,7 @@ def show_system3():
                         "system3_interest_news"
                     ] = search_news_for_interests(
                         all_interests,
-                        max_per_interest=4
+                        max_per_interest=5
                     )
 
             interest_news = (
@@ -928,10 +1166,15 @@ def show_system3():
             if not interest_news:
 
                 st.warning(
-                    "Aucune nouvelle trouvée."
+                    "Aucune nouvelle trouvée "
+                    "pour tes intérêts."
                 )
 
             else:
+
+                # ------------------------------------------------
+                # AFFICHAGE
+                # ------------------------------------------------
 
                 for index, article in enumerate(
                     interest_news[:20]
@@ -948,7 +1191,8 @@ def show_system3():
                         st.caption(
                             f"📰 {article['source']} "
                             f"• 🕐 {article['time']} "
-                            f"• 🎯 {article.get('matched_interest', '')}"
+                            f"• 🎯 "
+                            f"{article.get('matched_interest', '')}"
                         )
 
                         if article.get(
@@ -999,9 +1243,10 @@ def show_system3():
                                 use_container_width=True
                             )
 
-        # ----------------------------------------------------
+
+        # ====================================================
         # PORTEFEUILLE
-        # ----------------------------------------------------
+        # ====================================================
 
         st.divider()
 
@@ -1017,7 +1262,7 @@ def show_system3():
 
             st.info(
                 "Aucun titre actuellement détenu "
-                "dans ton portefeuille."
+                "dans ton portefeuille de Système 2."
             )
 
         else:
@@ -1034,19 +1279,25 @@ def show_system3():
                 f"Titres suivis : {portfolio_display}"
             )
 
+            # ------------------------------------------------
+            # RECHERCHE
+            # ------------------------------------------------
+
             if (
                 "system3_portfolio_news"
                 not in st.session_state
             ):
 
                 with st.spinner(
-                    "Recherche des nouvelles de ton portefeuille..."
+                    "Recherche des nouvelles "
+                    "de ton portefeuille..."
                 ):
 
                     st.session_state[
                         "system3_portfolio_news"
                     ] = get_portfolio_news(
-                        holdings
+                        holdings,
+                        max_articles_per_ticker=5
                     )
 
             portfolio_news = (
@@ -1058,7 +1309,8 @@ def show_system3():
             if not portfolio_news:
 
                 st.warning(
-                    "Aucune nouvelle trouvée pour ton portefeuille."
+                    "Aucune nouvelle trouvée "
+                    "pour ton portefeuille."
                 )
 
             else:
@@ -1077,7 +1329,8 @@ def show_system3():
                     ):
 
                         st.markdown(
-                            f"### 📈 {ticker} — {article['title']}"
+                            f"### 📈 {ticker} — "
+                            f"{article['title']}"
                         )
 
                         st.caption(
@@ -1130,6 +1383,7 @@ def show_system3():
                                 use_container_width=True
                             )
 
+
     # ========================================================
     # MES INTÉRÊTS
     # ========================================================
@@ -1141,16 +1395,16 @@ def show_system3():
         )
 
         st.write(
-            "Les modifications sont sauvegardées "
-            "dans ton compte et resteront après "
-            "une déconnexion ou un redémarrage."
+            "Tes intérêts sont sauvegardés dans ton compte. "
+            "Les modifications restent après une déconnexion "
+            "ou un redémarrage de l'application."
         )
 
         st.divider()
 
-        # ----------------------------------------------------
+        # ====================================================
         # AJOUTER UNE CATÉGORIE
-        # ----------------------------------------------------
+        # ====================================================
 
         st.subheader(
             "➕ Ajouter une catégorie"
@@ -1196,6 +1450,11 @@ def show_system3():
 
                 if success:
 
+                    st.session_state.pop(
+                        "system3_interest_news",
+                        None
+                    )
+
                     st.success(
                         "✅ Catégorie sauvegardée définitivement."
                     )
@@ -1205,14 +1464,14 @@ def show_system3():
                 else:
 
                     st.error(
-                        f"Erreur : {error}"
+                        f"Erreur de sauvegarde : {error}"
                     )
 
         st.divider()
 
-        # ----------------------------------------------------
-        # CATÉGORIES EXISTANTES
-        # ----------------------------------------------------
+        # ====================================================
+        # CATÉGORIES
+        # ====================================================
 
         for category in list(
             categories.keys()
@@ -1231,20 +1490,20 @@ def show_system3():
                     f"{len(interests)} intérêt(s)"
                 )
 
-                # --------------------------------------------
-                # INTÉRÊTS EXISTANTS
-                # --------------------------------------------
+                # ------------------------------------------------
+                # INTÉRÊTS
+                # ------------------------------------------------
 
                 selected_interests = st.multiselect(
-                    "Intérêts",
+                    "Intérêts suivis",
                     options=interests,
                     default=interests,
                     key=f"select_{category}"
                 )
 
-                # --------------------------------------------
-                # NOUVEL INTÉRÊT
-                # --------------------------------------------
+                # ------------------------------------------------
+                # AJOUTER UN INTÉRÊT
+                # ------------------------------------------------
 
                 new_interest = st.text_input(
                     "Ajouter un intérêt",
@@ -1253,6 +1512,10 @@ def show_system3():
                 )
 
                 col1, col2 = st.columns(2)
+
+                # ------------------------------------------------
+                # ENREGISTRER
+                # ------------------------------------------------
 
                 with col1:
 
@@ -1266,27 +1529,41 @@ def show_system3():
                             selected_interests
                         )
 
-                        if new_interest.strip():
+                        new_interest_clean = (
+                            new_interest.strip()
+                        )
+
+                        if new_interest_clean:
 
                             if (
-                                new_interest.strip()
+                                new_interest_clean
                                 not in updated_interests
                             ):
 
                                 updated_interests.append(
-                                    new_interest.strip()
+                                    new_interest_clean
                                 )
+
+                        # ----------------------------------------
+                        # MODIFIER LA MÉMOIRE DE SESSION
+                        # ----------------------------------------
 
                         categories[
                             category
                         ] = updated_interests
 
-                        # Supprime les anciennes nouvelles
-                        # afin qu'elles soient recalculées.
+                        # ----------------------------------------
+                        # SUPPRIMER LES ANCIENNES NOUVELLES
+                        # ----------------------------------------
+
                         st.session_state.pop(
                             "system3_interest_news",
                             None
                         )
+
+                        # ----------------------------------------
+                        # SAUVEGARDER DANS GOOGLE SHEETS
+                        # ----------------------------------------
 
                         success, error = (
                             save_current_preferences()
@@ -1305,6 +1582,10 @@ def show_system3():
                             st.error(
                                 f"Erreur de sauvegarde : {error}"
                             )
+
+                # ------------------------------------------------
+                # SUPPRIMER CATÉGORIE
+                # ------------------------------------------------
 
                 with col2:
 
@@ -1330,7 +1611,7 @@ def show_system3():
                         if success:
 
                             st.success(
-                                "Catégorie supprimée définitivement."
+                                "✅ Catégorie supprimée définitivement."
                             )
 
                             st.rerun()
@@ -1341,10 +1622,14 @@ def show_system3():
                                 f"Erreur : {error}"
                             )
 
+        # ====================================================
+        # RÉSUMÉ
+        # ====================================================
+
         st.divider()
 
         st.subheader(
-            "🎯 Résumé de mes intérêts"
+            "🎯 Mes intérêts actuels"
         )
 
         total = 0
@@ -1359,12 +1644,15 @@ def show_system3():
 
                 st.markdown(
                     f"**{category}** : "
-                    + " • ".join(interests)
+                    + " • ".join(
+                        interests
+                    )
                 )
 
         st.caption(
             f"{total} intérêt(s) suivi(s)"
         )
+
 
     # ========================================================
     # PORTEFEUILLE
@@ -1378,8 +1666,7 @@ def show_system3():
 
         st.write(
             "Les titres affichés ici proviennent "
-            "directement des transactions enregistrées "
-            "dans Système 2."
+            "directement des transactions de Système 2."
         )
 
         st.divider()
@@ -1418,7 +1705,8 @@ def show_system3():
                     ):
 
                         with st.spinner(
-                            f"Recherche des nouvelles de {ticker}..."
+                            f"Recherche des vraies nouvelles "
+                            f"de {ticker}..."
                         ):
 
                             ticker_news = (
@@ -1441,7 +1729,7 @@ def show_system3():
                             ):
 
                                 st.markdown(
-                                    f"**{article['title']}**"
+                                    f"### {article['title']}"
                                 )
 
                                 st.caption(
@@ -1458,9 +1746,9 @@ def show_system3():
                                     )
 
                                 st.link_button(
-                                    "Lire l'article ↗",
+                                    "Lire l'article original ↗",
                                     article["link"],
-                                    key=f"ticker_link_{ticker}_{i}"
+                                    use_container_width=True
                                 )
 
                                 st.divider()
