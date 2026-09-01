@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 import pandas as pd
 import requests
@@ -114,6 +113,21 @@ COMPANY_NAMES = {
 
     "TOI": "Topicus.com",
     "TOI.TO": "Topicus.com",
+
+    "KXS": "Kinaxis",
+    "KXS.TO": "Kinaxis",
+    "DSG": "Descartes Systems Group",
+    "DSG.TO": "Descartes Systems Group",
+    "LUN": "Lundin Mining",
+    "LUN.TO": "Lundin Mining",
+
+    # ETF / fonds
+    "TEC": "TD Global Technology Leaders Index ETF",
+    "TEC.TO": "TD Global Technology Leaders Index ETF",
+    "VDY": "Vanguard FTSE Canadian High Dividend Yield Index ETF",
+    "VDY.TO": "Vanguard FTSE Canadian High Dividend Yield Index ETF",
+    "XEQT": "iShares Core Equity ETF Portfolio",
+    "XEQT.TO": "iShares Core Equity ETF Portfolio",
 
     # --------------------------------------------------------
     # Crypto / entreprises liées
@@ -547,10 +561,34 @@ def get_portfolio_news(
         # RECHERCHE PAR NOM DE COMPAGNIE
         # ----------------------------------------------------
 
+        # Recherche centrée sur le nom complet de la compagnie.
+        # Les guillemets évitent que Google News interprète le ticker
+        # ou seulement un mot générique comme sujet principal.
         articles = fetch_google_news(
-            company_name,
-            max_results=max_articles_per_ticker
+            f'"{company_name}"',
+            max_results=max_articles_per_ticker * 2
         )
+
+        # Pour une action, on garde en priorité les articles dont le
+        # titre ou la description mentionne réellement la compagnie.
+        company_words = [
+            word.lower()
+            for word in re.findall(r"[A-Za-zÀ-ÿ0-9]+", company_name)
+            if len(word) >= 3
+        ]
+
+        relevant_articles = []
+
+        for article in articles:
+            haystack = (
+                article.get("title", "") + " " +
+                article.get("description", "")
+            ).lower()
+
+            if any(word in haystack for word in company_words):
+                relevant_articles.append(article)
+
+        articles = relevant_articles[:max_articles_per_ticker]
 
         for article in articles:
 
@@ -1818,12 +1856,31 @@ def show_system3():
                             f"{company_name}..."
                         ):
 
-                            company_news = (
-                                fetch_google_news(
-                                    company_name,
-                                    max_results=10
-                                )
+                            company_news = fetch_google_news(
+                                f'"{company_name}"',
+                                max_results=20
                             )
+
+                            company_words = [
+                                word.lower()
+                                for word in re.findall(
+                                    r"[A-Za-zÀ-ÿ0-9]+",
+                                    company_name
+                                )
+                                if len(word) >= 3
+                            ]
+
+                            company_news = [
+                                article
+                                for article in company_news
+                                if any(
+                                    word in (
+                                        article.get("title", "") + " " +
+                                        article.get("description", "")
+                                    ).lower()
+                                    for word in company_words
+                                )
+                            ][:10]
 
                         if not company_news:
 
@@ -1902,4 +1959,3 @@ def show_system3():
                                     )
 
                                 st.divider()
-```
