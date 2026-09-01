@@ -789,29 +789,87 @@ def search_news_for_interests(
 # GEMINI
 # ============================================================
 
+GEMINI_MODELS = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+]
+
+
 def get_gemini_client():
+    """Crée le client Gemini avec la clé du projet Streamlit."""
 
     try:
-
-        if "client" in globals():
-
-            return globals()["client"]
-
         from google import genai
 
-        if "GEMINI_API_KEY" not in st.secrets:
+        api_key = st.secrets.get("GEMINI_API_KEY")
 
+        if not api_key:
             return None
 
-        return genai.Client(
-            api_key=st.secrets[
-                "GEMINI_API_KEY"
-            ]
-        )
+        return genai.Client(api_key=api_key)
 
     except Exception:
-
         return None
+
+
+def generate_ai_text(prompt):
+    """
+    Génère du texte avec Gemini.
+
+    Utilise l'API Interactions en priorité, puis generateContent
+    comme solution de secours pour les versions du SDK qui ne
+    possèdent pas encore Interactions.
+    """
+
+    client = get_gemini_client()
+
+    if client is None:
+        return None
+
+    # API Interactions = interface recommandée actuellement.
+    if hasattr(client, "interactions"):
+        for model in GEMINI_MODELS:
+            try:
+                response = client.interactions.create(
+                    model=model,
+                    input=prompt
+                )
+
+                text = getattr(
+                    response,
+                    "output_text",
+                    None
+                )
+
+                if text:
+                    return text.strip()
+
+            except Exception:
+                continue
+
+    # Compatibilité avec les anciennes versions du SDK.
+    if hasattr(client, "models"):
+        for model in GEMINI_MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=prompt
+                )
+
+                text = getattr(
+                    response,
+                    "text",
+                    None
+                )
+
+                if text:
+                    return text.strip()
+
+            except Exception:
+                continue
+
+    return None
 
 
 # ============================================================
@@ -822,69 +880,47 @@ def get_ai_summary(
     article,
     context=""
 ):
-    """
-    Résume une vraie nouvelle.
-
-    L'IA ne crée pas la nouvelle.
-    """
-
-    client = get_gemini_client()
-
-    if client is None:
-
-        return article.get(
-            "description",
-            ""
-        )
+    """Résume une vraie nouvelle sans inventer de faits."""
 
     prompt = f"""
-Tu dois résumer une vraie nouvelle provenant
-d'un flux d'actualité.
+Tu dois résumer une vraie nouvelle provenant d'un flux d'actualité.
 
 IMPORTANT :
 - Ne crée aucun fait.
 - N'invente aucune information.
 - Utilise uniquement les informations fournies.
-- Si une information n'est pas disponible,
-  ne l'invente pas.
+- Si une information n'est pas disponible, ne l'invente pas.
 - Réponds en français.
 
 Titre :
-{article.get("title", "")}
+{article.get('title', '')}
 
 Source :
-{article.get("source", "")}
+{article.get('source', '')}
 
 Résumé fourni :
-{article.get("description", "")}
+{article.get('description', '')}
 
 Contexte :
 {context}
 
 Fais un résumé clair en 3 à 5 phrases.
-
-Explique ensuite brièvement pourquoi cette nouvelle
-peut être importante.
+Explique ensuite brièvement pourquoi cette nouvelle peut être importante.
 """
 
-    try:
+    result = generate_ai_text(prompt)
 
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt
-        )
+    if result:
+        return result
 
-        if response and response.text:
+    description = article.get("description", "")
 
-            return response.text.strip()
+    if description:
+        return description
 
-    except Exception:
-
-        pass
-
-    return article.get(
-        "description",
-        ""
+    return (
+        "Le résumé IA n'est pas disponible pour le moment. "
+        "Consulte l'article original pour les informations complètes."
     )
 
 
@@ -896,12 +932,7 @@ def get_ai_detailed_analysis(
     article,
     context=""
 ):
-    """Produit une analyse détaillée."""
-
-    client = get_gemini_client()
-
-    if client is None:
-        return None
+    """Produit une analyse détaillée de la vraie nouvelle."""
 
     prompt = f"""
 Analyse cette vraie nouvelle.
@@ -914,24 +945,24 @@ IMPORTANT :
 - Réponds en français.
 
 TITRE :
-{article.get("title", "")}
+{article.get('title', '')}
 
 SOURCE :
-{article.get("source", "")}
+{article.get('source', '')}
 
 DATE :
-{article.get("date", "")}
+{article.get('date', '')}
 
 RÉSUMÉ :
-{article.get("description", "")}
+{article.get('description', '')}
 
 CONTEXTE UTILISATEUR :
 {context}
 
-Structure :
+Structure ta réponse ainsi :
 
 ### 1. Ce qui s'est passé
-Résume les faits.
+Résume les faits connus.
 
 ### 2. Pourquoi c'est important
 Explique les conséquences possibles.
@@ -940,29 +971,13 @@ Explique les conséquences possibles.
 Entreprises, secteurs, pays ou personnes.
 
 ### 4. Impact possible
-Explique les impacts possibles.
-Ne présente aucune prédiction comme une certitude.
+Explique les impacts possibles. Distingue clairement les faits des possibilités.
 
 ### 5. À retenir
 Donne les points essentiels.
 """
 
-    try:
-
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=prompt
-        )
-
-        if response and response.text:
-
-            return response.text.strip()
-
-    except Exception:
-
-        pass
-
-    return None
+    return generate_ai_text(prompt)
 
 
 # ============================================================
@@ -1009,137 +1024,101 @@ def get_related_articles(
 
 
 # ============================================================
-# FENÊTRE : PLUS DE DÉTAILS
+# PLUS DE DÉTAILS
 # ============================================================
 
 def show_full_details(
     article,
     context=""
 ):
+    """Affiche les détails dans la page au lieu d'utiliser st.dialog.
 
-    @st.dialog(
-        "📖 Plus de détails",
-        width="large"
-    )
-    def dialog():
+    Cela évite les problèmes de compatibilité de Streamlit et garantit
+    que le bouton « Plus de détails » produit toujours un résultat visible.
+    """
 
-        st.subheader(
-            article["title"]
-        )
+    st.divider()
+    st.header("📖 Plus de détails")
 
-        st.caption(
-            f"📰 {article['source']} "
-            f"• 🕐 {article['time']}"
-        )
+    col_close, _ = st.columns([1, 5])
 
-        if article.get("company"):
-
-            st.info(
-                f"📈 Compagnie : "
-                f"**{article['company']}** "
-                f"({article.get('ticker', '')})"
-            )
-
-        elif article.get("ticker"):
-
-            st.info(
-                f"📈 Cette nouvelle concerne "
-                f"**{article['ticker']}**, "
-                f"un titre de ton portefeuille."
-            )
-
-        if article.get(
-            "category"
-        ):
-
-            st.info(
-                f"📁 Catégorie : "
-                f"**{article['category']}**"
-            )
-
-        if article.get(
-            "matched_interest"
-        ):
-
-            st.info(
-                f"🎯 Sujet : "
-                f"**{article['matched_interest']}**"
-            )
-
-        st.divider()
-
-        st.markdown(
-            "### 📝 Résumé"
-        )
-
-        with st.spinner(
-            "Résumé de la nouvelle..."
-        ):
-
-            summary = get_ai_summary(
-                article,
-                context
-            )
-
-        st.write(summary)
-
-        st.divider()
-
-        st.markdown(
-            "### 🔎 Informations de l'article"
-        )
-
-        if article.get(
-            "description"
-        ):
-
-            st.write(
-                article["description"]
-            )
-
-        else:
-
-            st.info(
-                "Aucun résumé supplémentaire "
-                "n'est fourni par le flux."
-            )
-
-        st.markdown(
-            "### 🤖 Analyse"
-        )
-
-        with st.spinner(
-            "Analyse de la nouvelle..."
-        ):
-
-            analysis = (
-                get_ai_detailed_analysis(
-                    article,
-                    context
-                )
-            )
-
-        if analysis:
-
-            st.markdown(
-                analysis
-            )
-
-        else:
-
-            st.info(
-                "Analyse IA non disponible."
-            )
-
-        st.divider()
-
-        st.link_button(
-            "📰 Lire l'article original",
-            article["link"],
+    with col_close:
+        if st.button(
+            "✕ Fermer",
+            key="system3_close_details",
             use_container_width=True
+        ):
+            st.session_state.pop(
+                "system3_selected_article",
+                None
+            )
+            st.session_state.pop(
+                "system3_selected_context",
+                None
+            )
+            st.rerun()
+
+    st.subheader(
+        article.get("title", "Nouvelle")
+    )
+
+    st.caption(
+        f"📰 {article.get('source', 'Source inconnue')} "
+        f"• 🕐 {article.get('time', '')}"
+    )
+
+    if article.get("company"):
+        st.info(
+            f"📈 Compagnie : **{article['company']}** "
+            f"({article.get('ticker', '')})"
         )
 
-    dialog()
+    if article.get("category"):
+        st.info(
+            f"📁 Catégorie : **{article['category']}**"
+        )
+
+    if article.get("matched_interest"):
+        st.info(
+            f"🎯 Sujet : **{article['matched_interest']}**"
+        )
+
+    st.markdown("### 📝 Résumé")
+
+    with st.spinner("Résumé de la nouvelle..."):
+        summary = get_ai_summary(
+            article,
+            context
+        )
+
+    st.write(summary)
+
+    st.markdown("### 🤖 Analyse détaillée")
+
+    with st.spinner("Analyse de la nouvelle..."):
+        analysis = get_ai_detailed_analysis(
+            article,
+            context
+        )
+
+    if analysis:
+        st.markdown(analysis)
+    else:
+        st.warning(
+            "L'analyse IA n'a pas pu être générée. "
+            "Vérifie que GEMINI_API_KEY est bien configurée "
+            "dans les secrets de ton application."
+        )
+
+    if article.get("description"):
+        st.markdown("### 🔎 Informations fournies par la source")
+        st.write(article["description"])
+
+    st.link_button(
+        "📰 Lire l'article original",
+        article["link"],
+        use_container_width=True
+    )
 
 
 # ============================================================
@@ -1222,32 +1201,129 @@ def show_related_articles(
 # SAUVEGARDE DES INTÉRÊTS
 # ============================================================
 
-def save_current_preferences():
+def normalize_categories(categories):
+    """Normalise les données chargées/sauvegardées."""
 
-    username = st.session_state.get(
-        "username"
-    )
+    if not isinstance(categories, dict):
+        return {}
+
+    normalized = {}
+
+    for category, interests in categories.items():
+        category = str(category).strip()
+
+        if not category:
+            continue
+
+        if interests is None:
+            interests = []
+        elif isinstance(interests, str):
+            interests = [interests]
+        elif not isinstance(interests, (list, tuple, set)):
+            interests = []
+
+        clean_interests = []
+
+        for interest in interests:
+            interest = str(interest).strip()
+            if interest and interest not in clean_interests:
+                clean_interests.append(interest)
+
+        normalized[category] = clean_interests
+
+    return normalized
+
+
+def save_current_preferences(categories=None):
+    """
+    Sauvegarde immédiatement les intérêts dans database.py.
+
+    La fonction accepte plusieurs formats de retour afin de rester
+    compatible avec les versions précédentes de database.py :
+    - (True, None)
+    - (True, "")
+    - True
+    - None si la fonction ne retourne rien
+    """
+
+    username = st.session_state.get("username")
 
     if not username:
+        return False, "Utilisateur non connecté."
 
-        return (
-            False,
-            "Utilisateur non connecté."
+    if categories is None:
+        categories = st.session_state.get(
+            "system3_categories",
+            {}
         )
 
-    categories = st.session_state.get(
-        "system3_categories",
-        {}
-    )
+    categories = normalize_categories(categories)
 
-    success, error = (
-        save_system3_preferences(
+    # On garde exactement la même structure en mémoire.
+    st.session_state[
+        "system3_categories"
+    ] = categories
+
+    try:
+        result = save_system3_preferences(
             username,
             categories
         )
+
+        if isinstance(result, tuple):
+            if len(result) >= 2:
+                return bool(result[0]), result[1]
+            if len(result) == 1:
+                return bool(result[0]), None
+
+        if result is False:
+            return False, "La sauvegarde a été refusée par database.py."
+
+        # None ou True sont considérés comme succès si aucune exception
+        # n'a été levée par database.py.
+        return True, None
+
+    except Exception as e:
+        return False, str(e)
+
+
+def save_category_change(category):
+    """Callback appelé immédiatement lorsqu'un intérêt est coché/décoché."""
+
+    categories = normalize_categories(
+        st.session_state.get(
+            "system3_categories",
+            {}
+        )
     )
 
-    return success, error
+    key = f"select_{category}"
+    selected = st.session_state.get(
+        key,
+        []
+    )
+
+    categories[category] = list(selected)
+
+    success, error = save_current_preferences(
+        categories
+    )
+
+    # Les anciennes nouvelles ne correspondent plus nécessairement aux
+    # intérêts actuels.
+    st.session_state.pop(
+        "system3_interest_news",
+        None
+    )
+
+    if success:
+        st.session_state[
+            "system3_save_message"
+        ] = "✅ Intérêts sauvegardés automatiquement."
+    else:
+        st.session_state[
+            "system3_save_message"
+        ] = f"❌ Erreur de sauvegarde : {error}"
 
 
 # ============================================================
@@ -1277,17 +1353,25 @@ def show_system3():
         not in st.session_state
     ):
 
-        st.session_state[
-            "system3_categories"
-        ] = load_system3_preferences(
+        loaded_categories = load_system3_preferences(
             username
         )
 
-    categories = (
+        st.session_state[
+            "system3_categories"
+        ] = normalize_categories(
+            loaded_categories
+        )
+
+    categories = normalize_categories(
         st.session_state[
             "system3_categories"
         ]
     )
+
+    st.session_state[
+        "system3_categories"
+    ] = categories
 
     # ========================================================
     # TABS
@@ -1470,13 +1554,16 @@ def show_system3():
                                 use_container_width=True
                             ):
 
-                                show_full_details(
-                                    article,
-                                    article.get(
-                                        "matched_interest",
-                                        ""
-                                    )
+                                st.session_state[
+                                    "system3_selected_article"
+                                ] = article
+                                st.session_state[
+                                    "system3_selected_context"
+                                ] = article.get(
+                                    "matched_interest",
+                                    ""
                                 )
+                                st.rerun()
 
                         with col2:
 
@@ -1632,7 +1719,9 @@ def show_system3():
                     "Intérêts",
                     options=interests,
                     default=interests,
-                    key=f"select_{category}"
+                    key=f"select_{category}",
+                    on_change=save_category_change,
+                    args=(category,)
                 )
 
                 # --------------------------------------------
@@ -1684,20 +1773,20 @@ def show_system3():
                             None
                         )
 
-                        success, error = (
-                            save_current_preferences()
+                        success, error = save_current_preferences(
+                            categories
                         )
 
                         if success:
-
-                            st.success(
-                                "✅ Intérêts sauvegardés définitivement."
+                            st.session_state.pop(
+                                "system3_interest_news",
+                                None
                             )
-
+                            st.session_state[
+                                "system3_save_message"
+                            ] = "✅ Intérêts sauvegardés définitivement."
                             st.rerun()
-
                         else:
-
                             st.error(
                                 f"Erreur de sauvegarde : {error}"
                             )
@@ -1723,20 +1812,20 @@ def show_system3():
                             None
                         )
 
-                        success, error = (
-                            save_current_preferences()
+                        success, error = save_current_preferences(
+                            categories
                         )
 
                         if success:
-
-                            st.success(
-                                "Catégorie supprimée définitivement."
+                            st.session_state.pop(
+                                "system3_interest_news",
+                                None
                             )
-
+                            st.session_state[
+                                "system3_save_message"
+                            ] = "✅ Catégorie supprimée définitivement."
                             st.rerun()
-
                         else:
-
                             st.error(
                                 f"Erreur : {error}"
                             )
@@ -1932,11 +2021,15 @@ def show_system3():
                                         use_container_width=True
                                     ):
 
-                                        show_full_details(
-                                            article,
-                                            f"Compagnie : "
-                                            f"{company_name}"
+                                        st.session_state[
+                                            "system3_selected_article"
+                                        ] = article
+                                        st.session_state[
+                                            "system3_selected_context"
+                                        ] = (
+                                            f"Compagnie : {company_name}"
                                         )
+                                        st.rerun()
 
                                 with col2:
 
@@ -1959,3 +2052,21 @@ def show_system3():
                                     )
 
                                 st.divider()
+
+# ============================================================
+# DÉTAILS SÉLECTIONNÉS
+# ============================================================
+
+    selected_article = st.session_state.get(
+        "system3_selected_article"
+    )
+
+    if selected_article:
+        show_full_details(
+            selected_article,
+            st.session_state.get(
+                "system3_selected_context",
+                ""
+            )
+        )
+
